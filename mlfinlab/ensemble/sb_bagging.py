@@ -245,7 +245,7 @@ class SequentiallyBootstrappedBaseBagging(BaseBagging, metaclass=ABCMeta):
         # Validate max_features
         if isinstance(self.max_features, (numbers.Integral, np.integer)):
             max_features = self.max_features
-        elif isinstance(self.max_features, np.float):
+        elif isinstance(self.max_features, float):
             max_features = self.max_features * self.n_features_
         else:
             raise ValueError("max_features must be int or float")

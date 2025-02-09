@@ -188,7 +188,7 @@ class CampbellBacktesting:
         :param num_obs: (int) Number of observations used for modelling
         :param sampling_frequency: (str) Sampling frequency of returns
                                    ['D','W','M','Q','A'] = [Daily, Weekly, Monthly, Quarterly, Annual]
-        :return: (np.float64) Number of monthly observations
+        :return: (float64) Number of monthly observations
         """
 
         # N - Number of monthly observations
@@ -215,7 +215,7 @@ class CampbellBacktesting:
         :param all_p_values: (np.array) Sorted p-values to adjust
         :param num_mult_test: (int) Number of multiple tests allowed
         :param p_val: (float) Significance level p-value
-        :return: (np.float64) P-value adjusted at a significant level
+        :return: (float64) P-value adjusted at a significant level
         """
 
         # Array for final p-values of the Holm method
@@ -249,7 +249,7 @@ class CampbellBacktesting:
         :param num_mult_test: (int) Number of multiple tests allowed
         :param p_val: (float) Significance level p-value
         :param c_constant: (float) Constant used in BHY method
-        :return: (np.float64) P-value adjusted at a significant level
+        :return: (float64) P-value adjusted at a significant level
         """
 
         # Array for final p-values of the BHY method
@@ -309,7 +309,7 @@ class CampbellBacktesting:
         :param p_values_simulation: (np.array) Sorted p-values to adjust
         :param num_mult_test: (int) Number of multiple tests allowed
         :param alpha_sig: (float) Significance level (e.g., 5%)
-        :return: (np.float64) P-value adjusted at a significant level
+        :return: (float64) P-value adjusted at a significant level
         """
 
         # Array for adjusted significance levels
@@ -344,7 +344,7 @@ class CampbellBacktesting:
         :param p_values_simulation: (np.array) Sorted p-values to adjust
         :param num_mult_test: (int) Number of multiple tests allowed
         :param alpha_sig: (float) Significance level (e.g., 5%)
-        :return: (np.float64) P-value adjusted at a significant level
+        :return: (float64) P-value adjusted at a significant level
         """
 
         if num_mult_test <= 1:  # If only one multiple test
