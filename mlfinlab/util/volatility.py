@@ -38,7 +38,7 @@ def get_daily_vol(close, lookback=100):
     return df0
 
 
-def get_parksinson_vol(high: pd.Series, low: pd.Series, window: int = 20) -> pd.Series:
+def get_parkinson_vol(high: pd.Series, low: pd.Series, window: int = 20) -> pd.Series:
     """
     Parkinson volatility estimator
 
