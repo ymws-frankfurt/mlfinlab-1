@@ -2,7 +2,7 @@
 A base class for the various bar types. Includes the logic shared between classes, to minimise the amount of
 duplicated code.
 """
-
+import gc # https://chatgpt.com/share/67b14ef0-9ad4-8000-9100-ebf8bcc2cfab
 from abc import ABC, abstractmethod
 from typing import Tuple, Union, Generator, Iterable, Optional
 
@@ -98,6 +98,11 @@ class BaseBars(ABC):
             else:
                 # Append to bars list
                 final_bars += list_bars
+
+            # Delete temporary variables and force garbage collection: https://chatgpt.com/share/67b14ef0-9ad4-8000-9100-ebf8bcc2cfab
+            del batch, list_bars
+            gc.collect()
+
             count += 1
 
         if verbose:  # pragma: no cover
