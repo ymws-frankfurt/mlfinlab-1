@@ -1,13 +1,13 @@
 import os
 import pandas as pd
 import functools
-from typing import Tuple, Union, Generator, Iterable, Optional
+from typing import Tuple, Union, Generator, Iterable, Optional, List
 
 from mlfinlab import data_structures
 from mlfinlab.data_structures.standard_data_structures import StandardBars
 from mlfinlab.data_structures.time_data_structures import TimeBars
 from mlfinlab.data_structures.imbalance_data_structures import EMAImbalanceBars, ConstImbalanceBars
-from run_data_structures import EMARunBars, ConstRunBars # why working without mlfinlab.data_structures???
+from mlfinlab.data_structures.run_data_structures import EMARunBars, ConstRunBars # why working without mlfinlab.data_structures???
 
 #https://chatgpt.com/share/67b2c8b7-f16c-8000-a2b5-bd09288c18cc
 
