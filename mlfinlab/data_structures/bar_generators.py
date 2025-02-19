@@ -97,7 +97,7 @@ class AppendingTimeBars(TimeBars):
         count = 0
         final_bars = []
         # Expected columns for time bars (as documented in get_time_bars)
-        cols = ['date_time', 'open', 'high', 'low', 'close', 'volume', 
+        cols = ['date_time', 'tick_num', 'open', 'high', 'low', 'close', 'volume', 
                 'cum_buy_volume', 'cum_ticks', 'cum_dollar_value']
         for batch in self._batch_iterator(file_path_or_df):
             if verbose:
@@ -158,7 +158,7 @@ class AppendingEMAImbalanceBars(EMAImbalanceBars):
                     open(output_path, 'w').close()
         count = 0
         final_bars = []
-        cols = ['date_time', 'open', 'high', 'low', 'close', 'volume', 
+        cols = ['date_time', 'tick_num', 'open', 'high', 'low', 'close', 'volume', 
                 'cum_buy_volume', 'cum_ticks', 'cum_dollar_value']
         for batch in self._batch_iterator(file_path_or_df):
             if verbose:
@@ -266,7 +266,7 @@ class AppendingConstImbalanceBars(ConstImbalanceBars):
                     open(output_path, 'w').close()
         count = 0
         final_bars = []
-        cols = ['date_time', 'open', 'high', 'low', 'close', 'volume',
+        cols = ['date_time', 'tick_num', 'open', 'high', 'low', 'close', 'volume',
                 'cum_buy_volume', 'cum_ticks', 'cum_dollar_value']
         for batch in self._batch_iterator(file_path_or_df):
             if verbose:
@@ -362,7 +362,7 @@ class AppendingEMARunBars(EMARunBars):
                     open(output_path, 'w').close()  # Clear file if necessary.
         count = 0
         final_bars = []
-        cols = ['date_time', 'open', 'high', 'low', 'close', 'volume',
+        cols = ['date_time', 'tick_num', 'open', 'high', 'low', 'close', 'volume',
                 'cum_buy_volume', 'cum_ticks', 'cum_dollar_value']
         for batch in self._batch_iterator(file_path_or_df):
             if verbose:
@@ -469,7 +469,7 @@ class AppendingConstRunBars(ConstRunBars):
                     open(output_path, 'w').close()
         count = 0
         final_bars = []
-        cols = ['date_time', 'open', 'high', 'low', 'close', 'volume',
+        cols = ['date_time', 'tick_num', 'open', 'high', 'low', 'close', 'volume',
                 'cum_buy_volume', 'cum_ticks', 'cum_dollar_value']
         for batch in self._batch_iterator(file_path_or_df):
             if verbose:
