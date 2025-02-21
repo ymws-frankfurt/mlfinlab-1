@@ -30,7 +30,7 @@ class MicrostructuralFeaturesGenerator:
     """
 
     def __init__(self, trades_input: (str, pd.DataFrame), tick_num_series: pd.Series, batch_size: int = 2e7,
-                 volume_encoding: dict = None, pct_encoding: dict = None):
+                 volume_encoding: dict = None, pct_encoding: dict = None, data_source="binance"):
         """
         Constructor
 
@@ -40,17 +40,18 @@ class MicrostructuralFeaturesGenerator:
         :param batch_size: (int) Number of rows to read in from the csv, per batch.
         :param volume_encoding: (dict) Dictionary of encoding scheme for trades size used to calculate entropy on encoded messages
         :param pct_encoding: (dict) Dictionary of encoding scheme for log returns used to calculate entropy on encoded messages
+        :param data_source: ymws
         """
+        self.data_source = data_source
 
         if isinstance(trades_input, str):
-            self.generator_object = pd.read_csv(trades_input, chunksize=batch_size, parse_dates=[0])
-            # Read in the first row & assert format
-            first_row = pd.read_csv(trades_input, nrows=1)
-            self._assert_csv(first_row)
+            # Assume trades_input is a file path; use our formatter to load it.
+            formatter = TickDataFormatter(data_source=self.data_source)
+            self.trades_df = formatter.load_and_format_dataframe(trades_input)
         elif isinstance(trades_input, pd.DataFrame):
-            self.generator_object = crop_data_frame_in_batches(trades_input, batch_size)
+            self.trades_df = trades_input
         else:
-            raise ValueError('trades_input is neither string(path to a csv file) nor pd.DataFrame')
+            raise ValueError('trades_input is neither a path nor a DataFrame')
 
         # Base properties
         self.tick_num_generator = iter(tick_num_series)
