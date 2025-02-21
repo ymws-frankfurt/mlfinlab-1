@@ -1,7 +1,6 @@
 """
 Inter-bar feature generator which uses trades data and bars index to calculate inter-bar features
 """
-
 import pandas as pd
 import numpy as np
 from mlfinlab.microstructural_features.entropy import get_shannon_entropy, get_plug_in_entropy, get_lempel_ziv_entropy, \
@@ -11,6 +10,8 @@ from mlfinlab.microstructural_features.second_generation import get_trades_based
     get_trades_based_amihud_lambda, get_trades_based_hasbrouck_lambda
 from mlfinlab.microstructural_features.misc import get_avg_tick_size, vwap
 from mlfinlab.microstructural_features.encoding import encode_tick_rule_array
+
+from tick_data_formatter import TickDataFormatter
 from mlfinlab.util.misc import crop_data_frame_in_batches
 
 
@@ -40,29 +41,42 @@ class MicrostructuralFeaturesGenerator:
         :param batch_size: (int) Number of rows to read in from the csv, per batch.
         :param volume_encoding: (dict) Dictionary of encoding scheme for trades size used to calculate entropy on encoded messages
         :param pct_encoding: (dict) Dictionary of encoding scheme for log returns used to calculate entropy on encoded messages
-        :param data_source: ymws
+        :param data_source: (str) Identifier for the data source. (o3-mini-high)
         """
         self.data_source = data_source
+        self.batch_size = batch_size
+        self.volume_encoding = volume_encoding
+        self.pct_encoding = pct_encoding
+        self.tick_num_series = tick_num_series
 
+        # Initialize the formatter.
+        self.formatter = TickDataFormatter(data_source=self.data_source)
+
+        # If trades_input is a file path, use batch processing.
         if isinstance(trades_input, str):
-            # Assume trades_input is a file path; use our formatter to load it.
-            formatter = TickDataFormatter(data_source=self.data_source)
-            self.trades_df = formatter.load_and_format_dataframe(trades_input)
+            self.generator_object = self.formatter.load_and_format_dataframe_in_batches(trades_input, self.batch_size)
         elif isinstance(trades_input, pd.DataFrame):
-            self.trades_df = trades_input
+            # If it's already a DataFrame, you might decide whether to batch it:
+            self.generator_object = crop_data_frame_in_batches(trades_input, self.batch_size)
         else:
-            raise ValueError('trades_input is neither a path nor a DataFrame')
-
-        # Base properties
+            raise ValueError('trades_input must be a file path or a pandas DataFrame')
+        
+        # Setup tick number generator.
         self.tick_num_generator = iter(tick_num_series)
-        self.current_bar_tick_num = self.tick_num_generator.__next__()
+        self.current_bar_tick_num = next(self.tick_num_generator)
 
-        # Cache properties
+        # Initialize caches for features.
         self.price_diff = []
         self.trade_size = []
         self.tick_rule = []
         self.dollar_size = []
         self.log_ret = []
+        self.prev_price = None
+        self.prev_tick_rule = 0
+        self.tick_num = 0
+
+    # The rest of your methods remain largely unchanged.
+    # They will process each batch yielded by self.generator_object.
 
         # Entropy properties
         self.volume_encoding = volume_encoding
@@ -86,54 +100,71 @@ class MicrostructuralFeaturesGenerator:
         :param output_path: (bool) Path to results file, if to_csv = True
         :return: (DataFrame or None) Microstructural features for bar index
         """
-
-        if to_csv is True:
-            header = True  # if to_csv is True, header should be written on the first batch only
-            open(output_path, 'w').close()  # Clean output csv file
-
-        # Read csv in batches
-        count = 0
-        final_bars = []
-        cols = ['date_time', 'avg_tick_size', 'tick_rule_sum', 'vwap', 'kyle_lambda', 'kyle_lambda_t_value',
-                'amihud_lambda', 'amihud_lambda_t_value', 'hasbrouck_lambda', 'hasbrouck_lambda_t_value']
-
-        # Entropy features columns
+        # Define base columns
+        cols = [
+            'date_time', 
+            'avg_tick_size', 
+            'tick_rule_sum', 
+            'vwap',
+            'kyle_lambda', 
+            'kyle_lambda_t_value', 
+            'amihud_lambda', 
+            'amihud_lambda_t_value',
+            'hasbrouck_lambda', 
+            'hasbrouck_lambda_t_value'
+        ]
+        
+        # Extend columns with entropy features for tick_rule
         for en_type in self.entropy_types:
             cols += ['tick_rule_entropy_' + en_type]
 
+        # Extend columns for volume encoding if provided
         if self.volume_encoding is not None:
             for en_type in self.entropy_types:
                 cols += ['volume_entropy_' + en_type]
 
+        # Extend columns for percentage encoding if provided
         if self.pct_encoding is not None:
             for en_type in self.entropy_types:
                 cols += ['pct_entropy_' + en_type]
 
+        # If output is to be written to CSV, prepare the file
+        if to_csv:
+            header = True
+            open(output_path, 'w').close()  # Clear any previous content
+        else:
+            final_bars = []
+
+        count = 0
+
+        # Process each batch from the generator_object
         for batch in self.generator_object:
-            if verbose:  # pragma: no cover
-                print('Batch number:', count)
-
-            list_bars, stop_flag = self._extract_bars(data=batch)
-
-            if to_csv is True:
-                pd.DataFrame(list_bars, columns=cols).to_csv(output_path, header=header, index=False, mode='a')
-                header = False
+            if verbose:
+                print('Processing batch:', count)
+            
+            # Process the current batch to extract bar features
+            list_bars, stop_flag = self._extract_bars(batch)
+            
+            if to_csv:
+                pd.DataFrame(list_bars, columns=cols).to_csv(
+                    output_path, header=header, index=False, mode='a'
+                )
+                header = False  # Only write header for the first batch
             else:
-                # Append to bars list
                 final_bars += list_bars
+            
             count += 1
-
-            # End of bar index, no need to calculate further
-            if stop_flag is True:
+            
+            # If _extract_bars signals no more data is needed, break early
+            if stop_flag:
                 break
 
-        # Return a DataFrame
-        if final_bars:
-            bars_df = pd.DataFrame(final_bars, columns=cols)
-            return bars_df
-
-        # Processed DataFrame is stored in .csv file, return None
+        # Return the combined DataFrame if not writing to CSV
+        if not to_csv and final_bars:
+            return pd.DataFrame(final_bars, columns=cols)
+        
         return None
+
 
     def _reset_cache(self):
         """
