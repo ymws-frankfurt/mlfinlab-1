@@ -3,19 +3,26 @@ Inter-bar feature generator which uses trades data and bars index to calculate i
 """
 import pandas as pd
 import numpy as np
-from mlfinlab.microstructural_features.entropy import get_shannon_entropy, get_plug_in_entropy, get_lempel_ziv_entropy, \
-    get_konto_entropy
+
+from mlfinlab.ymws.tick_data_formatter import TickDataFormatter
+
+from mlfinlab.microstructural_features.entropy import get_shannon_entropy, get_plug_in_entropy, get_lempel_ziv_entropy_fast#, \
+    #get_konto_entropy_nb
 from mlfinlab.microstructural_features.encoding import encode_array
 from mlfinlab.microstructural_features.second_generation import get_trades_based_kyle_lambda, \
     get_trades_based_amihud_lambda, get_trades_based_hasbrouck_lambda
 from mlfinlab.microstructural_features.misc import get_avg_tick_size, vwap
 from mlfinlab.microstructural_features.encoding import encode_tick_rule_array
 
-from tick_data_formatter import TickDataFormatter
 from mlfinlab.util.misc import crop_data_frame_in_batches
+
+# from concurrent.futures import ProcessPoolExecutor, as_completed
+# Import the compute_features_for_bar function from your parallel_feature_extraction.py module
+# from mlfinlab.microstructural_features.parallel_feature_extraction import compute_features_for_bar
 
 
 # pylint: disable=too-many-instance-attributes
+
 
 class MicrostructuralFeaturesGenerator:
     """
@@ -27,6 +34,9 @@ class MicrostructuralFeaturesGenerator:
     :param batch_size: (int) Number of rows to read in from the csv, per batch.
     :param volume_encoding: (dict) Dictionary of encoding scheme for trades size used to calculate entropy on encoded messages
     :param pct_encoding: (dict) Dictionary of encoding scheme for log returns used to calculate entropy on encoded messages
+
+    -> ### In case no parallelization, this class is to be used (ymws), 
+    in which case features (e.g. entropy, 1st-3rd generation) are rightly imported into this file as well ad to parallel_feature_extraction.py
 
     """
 
@@ -81,7 +91,8 @@ class MicrostructuralFeaturesGenerator:
         # Entropy properties
         self.volume_encoding = volume_encoding
         self.pct_encoding = pct_encoding
-        self.entropy_types = ['shannon', 'plug_in', 'lempel_ziv', 'konto']
+        #self.entropy_types = ['shannon', 'plug_in', 'lempel_ziv', 'konto']
+        self.entropy_types = ['shannon', 'plug_in', 'lempel_ziv']
 
         # Batch_run properties
         self.prev_price = None
@@ -249,22 +260,22 @@ class MicrostructuralFeaturesGenerator:
         encoded_tick_rule_message = encode_tick_rule_array(self.tick_rule)
         features.append(get_shannon_entropy(encoded_tick_rule_message))
         features.append(get_plug_in_entropy(encoded_tick_rule_message))
-        features.append(get_lempel_ziv_entropy(encoded_tick_rule_message))
-        features.append(get_konto_entropy(encoded_tick_rule_message))
+        features.append(get_lempel_ziv_entropy_fast(encoded_tick_rule_message))
+        #features.append(get_konto_entropy_nb(encoded_tick_rule_message))
 
         if self.volume_encoding is not None:
             message = encode_array(self.trade_size, self.volume_encoding)
             features.append(get_shannon_entropy(message))
             features.append(get_plug_in_entropy(message))
-            features.append(get_lempel_ziv_entropy(message))
-            features.append(get_konto_entropy(message))
+            features.append(get_lempel_ziv_entropy_fast(message))
+            #features.append(get_konto_entropy_nb(message))
 
         if self.pct_encoding is not None:
             message = encode_array(self.log_ret, self.pct_encoding)
             features.append(get_shannon_entropy(message))
             features.append(get_plug_in_entropy(message))
-            features.append(get_lempel_ziv_entropy(message))
-            features.append(get_konto_entropy(message))
+            features.append(get_lempel_ziv_entropy_fast(message))
+            #features.append(get_konto_entropy_nb(message))
 
         list_bars.append(features)
 
@@ -334,3 +345,82 @@ class MicrostructuralFeaturesGenerator:
         except ValueError:
             print('csv file, column 0, not a date time format:',
                   test_batch.iloc[0, 0])
+
+
+
+'''class MicrostructuralFeaturesGeneratorParallelBatched:
+    """
+    This class integrates batch loading/formatting of tick data with parallel feature extraction.
+    It uses TickDataFormatter to read the CSV in chunks, accumulates rows until a bar boundary is reached,
+    and then processes each bar concurrently to compute intra-bar features.
+    """
+    def __init__(self, file_path, data_source, tick_num_series, batch_size=10000, volume_encoding=None, pct_encoding=None):
+        """
+        :param file_path: Path to the raw tick CSV file.
+        :param data_source: Identifier for the data source (e.g., 'binance') that determines column mapping.
+        :param tick_num_series: A pandas Series containing the tick boundaries where a bar is formed (absolute tick counts).
+        :param batch_size: Number of rows to read per batch (adjust based on available memory).
+        :param volume_encoding: Optional encoding dictionary for volume (for additional feature computation).
+        :param pct_encoding: Optional encoding dictionary for log returns.
+        """
+        self.file_path = file_path
+        self.data_source = data_source
+        # Convert tick boundaries to a list for easier sequential processing.
+        self.tick_boundaries = list(tick_num_series)
+        self.batch_size = batch_size
+        self.volume_encoding = volume_encoding
+        self.pct_encoding = pct_encoding
+        # Initialize the TickDataFormatter using the given data source.
+        self.formatter = TickDataFormatter(data_source=data_source)
+        
+    def get_features_parallel(self):
+        """
+        Reads the tick data in batches, accumulates rows until bar boundaries (tick counts) are met,
+        splits the accumulated data into individual bars, and computes features for each bar in parallel.
+        
+        :return: A pandas DataFrame with computed intra-bar features.
+        """
+        # List to store each complete bar as a DataFrame.
+        bar_list = []
+        # Accumulator to hold rows across batches.
+        accumulator = pd.DataFrame(columns=['date_time', 'price', 'volume'])
+        
+        # Create a generator that yields formatted DataFrame batches.
+        batch_generator = self.formatter.load_and_format_dataframe_in_batches(self.file_path, self.batch_size)
+        
+        # Process each batch.
+        for batch in batch_generator:
+            # Reset index for consistent concatenation.
+            batch = batch.reset_index(drop=True)
+            # Append the new batch to the accumulator.
+            accumulator = pd.concat([accumulator, batch], ignore_index=True)
+            
+            # While the accumulator contains enough rows for the next bar:
+            while self.tick_boundaries and len(accumulator) >= self.tick_boundaries[0]:
+                # The first tick boundary specifies the number of ticks in the bar.
+                boundary = self.tick_boundaries.pop(0)
+                # Extract the bar: the first 'boundary' rows from the accumulator.
+                bar_df = accumulator.iloc[:boundary].copy()
+                bar_list.append(bar_df)
+                # Remove the processed rows from the accumulator.
+                accumulator = accumulator.iloc[boundary:].reset_index(drop=True)
+        
+        # Optionally, process any leftover rows as a final (partial) bar.
+        if not accumulator.empty:
+            bar_list.append(accumulator)
+        
+        # Now, process each bar in parallel using ProcessPoolExecutor.
+        features_list = []
+        with ProcessPoolExecutor() as executor:
+            # Submit each bar for feature computation.
+            futures = {executor.submit(compute_features_for_bar, bar, self.volume_encoding, self.pct_encoding): bar for bar in bar_list}
+            for future in as_completed(futures):
+                try:
+                    result = future.result()
+                    features_list.append(result)
+                except Exception as e:
+                    print(f"Error processing a bar: {e}")
+        
+        # Convert the list of feature dictionaries to a DataFrame.
+        features_df = pd.DataFrame(features_list)
+        return features_df'''
