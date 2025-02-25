@@ -14,6 +14,9 @@ from mlfinlab.microstructural_features.second_generation import get_trades_based
 from mlfinlab.microstructural_features.misc import get_avg_tick_size, vwap
 from mlfinlab.microstructural_features.encoding import encode_tick_rule_array
 
+# Import roll measure and roll impact functions from first_generation.py
+from mlfinlab.microstructural_features.first_generation import get_roll_measure, get_roll_impact
+
 from mlfinlab.util.misc import crop_data_frame_in_batches
 
 # from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -35,8 +38,8 @@ class MicrostructuralFeaturesGenerator:
     :param volume_encoding: (dict) Dictionary of encoding scheme for trades size used to calculate entropy on encoded messages
     :param pct_encoding: (dict) Dictionary of encoding scheme for log returns used to calculate entropy on encoded messages
 
-    -> ### In case no parallelization, this class is to be used (ymws), 
-    in which case features (e.g. entropy, 1st-3rd generation) are rightly imported into this file as well ad to parallel_feature_extraction.py
+    -> ### In case of no parallelization, this class is to be used (ymws), 
+    in which case features (e.g. entropy, 1st generation, KCA, SB, WW, sumFFD) are rightly imported into this file as well ad to parallel_feature_extraction.py
 
     """
 
@@ -85,8 +88,8 @@ class MicrostructuralFeaturesGenerator:
         self.prev_tick_rule = 0
         self.tick_num = 0
 
-    # The rest of your methods remain largely unchanged.
-    # They will process each batch yielded by self.generator_object.
+        # NEW: Cache to store raw tick prices for computing roll measure/impact.
+        self.cum_prices = []
 
         # Entropy properties
         self.volume_encoding = volume_encoding
@@ -117,6 +120,8 @@ class MicrostructuralFeaturesGenerator:
             'avg_tick_size', 
             'tick_rule_sum', 
             'vwap',
+            'roll_measure',
+            'roll_impact',            
             'kyle_lambda', 
             'kyle_lambda_t_value', 
             'amihud_lambda', 
@@ -189,6 +194,7 @@ class MicrostructuralFeaturesGenerator:
         self.tick_rule = []
         self.dollar_size = []
         self.log_ret = []
+        self.cum_prices = []  # Reset cum_prices cache
 
     def _extract_bars(self, data):
         """
@@ -206,6 +212,10 @@ class MicrostructuralFeaturesGenerator:
             price = float(row[1])
             volume = row[2]
             dollar_value = price * volume
+
+            # Append current tick price to the cum_prices cache (NEW)
+            self.cum_prices.append(price)
+
             signed_tick = self._apply_tick_rule(price)
 
             self.tick_num += 1
@@ -250,19 +260,38 @@ class MicrostructuralFeaturesGenerator:
         features.append(sum(self.tick_rule))
         features.append(vwap(self.dollar_size, self.trade_size))
 
-        # Lambdas
+        # NEW: Compute roll measure and roll impact from tick data.
+        # We create pandas Series from the prices and dollar sizes lists.
+        cum_prices_series = pd.Series(self.cum_prices)
+        dollar_series = pd.Series(self.dollar_size)
+        # Use a window of 20 ticks as default. If not enough ticks, assign NaN.
+        if len(cum_prices_series) >= 20:
+            roll_measure_series = get_roll_measure(cum_prices_series, window=20)
+            roll_impact_series = get_roll_impact(cum_prices_series, dollar_series, window=20)
+            # Take the last computed value (most recent)
+            roll_measure_val = roll_measure_series.iloc[-1]
+            roll_impact_val = roll_impact_series.iloc[-1]
+        else:
+            roll_measure_val = np.nan
+            roll_impact_val = np.nan
+        
+        features.append(roll_measure_val)
+        features.append(roll_impact_val)
+
+        # Lambdas (using trades-based second generation functions)
         features.extend(get_trades_based_kyle_lambda(self.price_diff, self.trade_size, self.tick_rule))  # Kyle lambda
         features.extend(get_trades_based_amihud_lambda(self.log_ret, self.dollar_size))  # Amihud lambda
         features.extend(
             get_trades_based_hasbrouck_lambda(self.log_ret, self.dollar_size, self.tick_rule))  # Hasbrouck lambda
 
-        # Entropy features
+        # Entropy features for tick rule
         encoded_tick_rule_message = encode_tick_rule_array(self.tick_rule)
         features.append(get_shannon_entropy(encoded_tick_rule_message))
         features.append(get_plug_in_entropy(encoded_tick_rule_message))
         features.append(get_lempel_ziv_entropy_fast(encoded_tick_rule_message))
         #features.append(get_konto_entropy_nb(encoded_tick_rule_message))
 
+        # Entropy features for volume encoding if provided
         if self.volume_encoding is not None:
             message = encode_array(self.trade_size, self.volume_encoding)
             features.append(get_shannon_entropy(message))
@@ -270,6 +299,7 @@ class MicrostructuralFeaturesGenerator:
             features.append(get_lempel_ziv_entropy_fast(message))
             #features.append(get_konto_entropy_nb(message))
 
+        # Entropy features for percentage encoding if provided
         if self.pct_encoding is not None:
             message = encode_array(self.log_ret, self.pct_encoding)
             features.append(get_shannon_entropy(message))
