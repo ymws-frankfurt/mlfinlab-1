@@ -44,7 +44,7 @@ class MicrostructuralFeaturesGenerator:
     """
 
     def __init__(self, trades_input: (str, pd.DataFrame), tick_num_series: pd.Series, batch_size: int = 2e7,
-                 volume_encoding: dict = None, pct_encoding: dict = None, data_source="binance"):
+                 volume_encoding: dict = None, pct_encoding: dict = None, data_source="binance", roll_window=1000):
         """
         Constructor
 
@@ -56,11 +56,12 @@ class MicrostructuralFeaturesGenerator:
         :param pct_encoding: (dict) Dictionary of encoding scheme for log returns used to calculate entropy on encoded messages
         :param data_source: (str) Identifier for the data source. (o3-mini-high)
         """
-        self.data_source = data_source
+        self.tick_num_series = tick_num_series
         self.batch_size = batch_size
         self.volume_encoding = volume_encoding
         self.pct_encoding = pct_encoding
-        self.tick_num_series = tick_num_series
+        self.data_source = data_source
+        self.roll_window = roll_window  # Expose the roll window size as a parameter
 
         # Initialize the formatter.
         self.formatter = TickDataFormatter(data_source=self.data_source)
@@ -261,13 +262,13 @@ class MicrostructuralFeaturesGenerator:
         features.append(vwap(self.dollar_size, self.trade_size))
 
         # NEW: Compute roll measure and roll impact from tick data.
-        # We create pandas Series from the prices and dollar sizes lists.
+        # We create pandas Series from the cum_prices and dollar sizes lists.
         cum_prices_series = pd.Series(self.cum_prices)
         dollar_series = pd.Series(self.dollar_size)
-        # Use a window of 20 ticks as default. If not enough ticks, assign NaN.
-        if len(cum_prices_series) >= 20:
-            roll_measure_series = get_roll_measure(cum_prices_series, window=20)
-            roll_impact_series = get_roll_impact(cum_prices_series, dollar_series, window=20)
+        # Compute roll measure and roll impact from tick data using self.roll_window as default. If not enough ticks, assign NaN.
+        if len(cum_prices_series) >= self.roll_window:
+            roll_measure_series = get_roll_measure(cum_prices_series, window=self.roll_window)
+            roll_impact_series = get_roll_impact(cum_prices_series, dollar_series, window=self.roll_window)
             # Take the last computed value (most recent)
             roll_measure_val = roll_measure_series.iloc[-1]
             roll_impact_val = roll_impact_series.iloc[-1]
