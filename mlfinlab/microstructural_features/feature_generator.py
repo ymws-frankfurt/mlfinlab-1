@@ -5,6 +5,7 @@ import pandas as pd
 import numpy as np
 
 from mlfinlab.ymws.tick_data_formatter import TickDataFormatter
+from mlfinlab.ymws.KCA_composite import fitKCA
 
 from mlfinlab.microstructural_features.entropy import get_shannon_entropy, get_plug_in_entropy, get_lempel_ziv_entropy_fast#, \
     #get_konto_entropy_nb
@@ -16,6 +17,13 @@ from mlfinlab.microstructural_features.encoding import encode_tick_rule_array
 
 # Import roll measure and roll impact functions from first_generation.py
 from mlfinlab.microstructural_features.first_generation import get_roll_measure, get_roll_impact
+from mlfinlab.microstructural_features.ww_runs_test import runs_z_score
+from mlfinlab.features.fracdiff_opt import optimal_frac_diff
+from mlfinlab.util.fast_ewma import ewma
+
+from mlfinlab.structural_breaks.chow import get_chow_type_stat
+from mlfinlab.structural_breaks.cusum import get_chu_stinchcombe_white_statistics
+from mlfinlab.structural_breaks.sadf import get_sadf
 
 from mlfinlab.util.misc import crop_data_frame_in_batches
 
@@ -128,7 +136,8 @@ class MicrostructuralFeaturesGenerator:
             'amihud_lambda', 
             'amihud_lambda_t_value',
             'hasbrouck_lambda', 
-            'hasbrouck_lambda_t_value'
+            'hasbrouck_lambda_t_value',
+            'runs_z_score',
         ]
         
         # Extend columns with entropy features for tick_rule
@@ -265,16 +274,29 @@ class MicrostructuralFeaturesGenerator:
         # We create pandas Series from the cum_prices and dollar sizes lists.
         cum_prices_series = pd.Series(self.cum_prices)
         dollar_series = pd.Series(self.dollar_size)
-        # Compute roll measure and roll impact from tick data using self.roll_window as default. If not enough ticks, assign NaN.
+        # Compute roll measure and roll impact from tick data using self.roll_window as default. If not enough ticks, assign adaptive_window (xNaN)
         if len(cum_prices_series) >= self.roll_window:
             roll_measure_series = get_roll_measure(cum_prices_series, window=self.roll_window)
             roll_impact_series = get_roll_impact(cum_prices_series, dollar_series, window=self.roll_window)
-            # Take the last computed value (most recent)
-            roll_measure_val = roll_measure_series.iloc[-1]
-            roll_impact_val = roll_impact_series.iloc[-1]
+
         else:
-            roll_measure_val = np.nan
-            roll_impact_val = np.nan
+            # Adaptive window: use the entire available series -> https://chatgpt.com/c/67bcdab2-7c14-8000-bd1b-116302697bc8
+            adaptive_window = len(cum_prices_series)
+            roll_measure_series = get_roll_measure(cum_prices_series, window=adaptive_window)
+            roll_impact_series = get_roll_impact(cum_prices_series, dollar_series, window=adaptive_window)
+
+        # <Disable fixed window approach>
+        # else:
+        #     roll_measure_val = np.nan
+        #     roll_impact_val = np.nan
+
+        # <Disable dynamic window approach> -> all NaN
+        # roll_measure_series = get_roll_measure(cum_prices_series, window=len(cum_prices_series))
+        # roll_impact_series = get_roll_impact(cum_prices_series, dollar_series, window=len(cum_prices_series))
+
+        # Take the last computed value (most recent)
+        roll_measure_val = roll_measure_series.iloc[-1]
+        roll_impact_val = roll_impact_series.iloc[-1]
         
         features.append(roll_measure_val)
         features.append(roll_impact_val)
@@ -282,8 +304,11 @@ class MicrostructuralFeaturesGenerator:
         # Lambdas (using trades-based second generation functions)
         features.extend(get_trades_based_kyle_lambda(self.price_diff, self.trade_size, self.tick_rule))  # Kyle lambda
         features.extend(get_trades_based_amihud_lambda(self.log_ret, self.dollar_size))  # Amihud lambda
-        features.extend(
-            get_trades_based_hasbrouck_lambda(self.log_ret, self.dollar_size, self.tick_rule))  # Hasbrouck lambda
+        features.extend(get_trades_based_hasbrouck_lambda(self.log_ret, self.dollar_size, self.tick_rule))  # Hasbrouck lambda
+
+        # NEW: Compute the runs test z-score using the raw tick prices for the current bar.
+        runs_z = runs_z_score(self.cum_prices)
+        features.append(runs_z)
 
         # Entropy features for tick rule
         encoded_tick_rule_message = encode_tick_rule_array(self.tick_rule)
