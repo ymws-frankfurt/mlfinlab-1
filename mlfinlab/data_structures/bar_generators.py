@@ -186,7 +186,8 @@ def get_ema_dollar_imbalance_bars_appending(file_path_or_df: Union[str, Iterable
                                             analyse_thresholds: bool = False,
                                             verbose: bool = True,
                                             to_csv: bool = False,
-                                            output_path: Optional[str] = None):
+                                            output_path: Optional[str] = None,
+                                            data_source: str = "binance"):
     """
     Creates EMA dollar imbalance bars with CSV appending.
     """
@@ -197,6 +198,8 @@ def get_ema_dollar_imbalance_bars_appending(file_path_or_df: Union[str, Iterable
                                      exp_num_ticks_constraints=exp_num_ticks_constraints,
                                      batch_size=batch_size,
                                      analyse_thresholds=analyse_thresholds)
+    # NEW: Set the data_source attribute so that _extract_bars can use it
+    bars.data_source = data_source
     imbalance_bars = bars.batch_run(file_path_or_df=file_path_or_df,
                                     verbose=verbose,
                                     to_csv=to_csv,
@@ -212,7 +215,8 @@ def get_ema_volume_imbalance_bars_appending(file_path_or_df: Union[str, Iterable
                                             analyse_thresholds: bool = False,
                                             verbose: bool = True,
                                             to_csv: bool = False,
-                                            output_path: Optional[str] = None):
+                                            output_path: Optional[str] = None,
+                                            data_source: str = "binance"):
     bars = AppendingEMAImbalanceBars(metric='volume_imbalance',
                                      num_prev_bars=num_prev_bars,
                                      expected_imbalance_window=expected_imbalance_window,
@@ -220,6 +224,8 @@ def get_ema_volume_imbalance_bars_appending(file_path_or_df: Union[str, Iterable
                                      exp_num_ticks_constraints=exp_num_ticks_constraints,
                                      batch_size=batch_size,
                                      analyse_thresholds=analyse_thresholds)
+    # NEW: Set the data_source attribute so that _extract_bars can use it
+    bars.data_source = data_source
     imbalance_bars = bars.batch_run(file_path_or_df=file_path_or_df,
                                     verbose=verbose,
                                     to_csv=to_csv,
@@ -235,7 +241,8 @@ def get_ema_tick_imbalance_bars_appending(file_path_or_df: Union[str, Iterable[s
                                           analyse_thresholds: bool = False,
                                           verbose: bool = True,
                                           to_csv: bool = False,
-                                          output_path: Optional[str] = None):
+                                          output_path: Optional[str] = None,
+                                          data_source: str = "binance"):
     bars = AppendingEMAImbalanceBars(metric='tick_imbalance',
                                      num_prev_bars=num_prev_bars,
                                      expected_imbalance_window=expected_imbalance_window,
@@ -243,6 +250,8 @@ def get_ema_tick_imbalance_bars_appending(file_path_or_df: Union[str, Iterable[s
                                      exp_num_ticks_constraints=exp_num_ticks_constraints,
                                      batch_size=batch_size,
                                      analyse_thresholds=analyse_thresholds)
+    # NEW: Set the data_source attribute so that _extract_bars can use it
+    bars.data_source = data_source
     imbalance_bars = bars.batch_run(file_path_or_df=file_path_or_df,
                                     verbose=verbose,
                                     to_csv=to_csv,
@@ -292,12 +301,15 @@ def get_const_dollar_imbalance_bars_appending(file_path_or_df: Union[str, Iterab
                                               analyse_thresholds: bool = False,
                                               verbose: bool = True,
                                               to_csv: bool = False,
-                                              output_path: Optional[str] = None):
+                                              output_path: Optional[str] = None,
+                                              data_source: str = "binance"):
     bars = AppendingConstImbalanceBars(metric='dollar_imbalance',
                                        expected_imbalance_window=expected_imbalance_window,
                                        exp_num_ticks_init=exp_num_ticks_init,
                                        batch_size=batch_size,
                                        analyse_thresholds=analyse_thresholds)
+    # NEW: Set the data_source attribute so that _extract_bars can use it
+    bars.data_source = data_source
     imbalance_bars = bars.batch_run(file_path_or_df=file_path_or_df,
                                     verbose=verbose,
                                     to_csv=to_csv,
@@ -311,12 +323,15 @@ def get_const_volume_imbalance_bars_appending(file_path_or_df: Union[str, Iterab
                                               analyse_thresholds: bool = False,
                                               verbose: bool = True,
                                               to_csv: bool = False,
-                                              output_path: Optional[str] = None):
+                                              output_path: Optional[str] = None,
+                                              data_source: str = "binance"):
     bars = AppendingConstImbalanceBars(metric='volume_imbalance',
                                        expected_imbalance_window=expected_imbalance_window,
                                        exp_num_ticks_init=exp_num_ticks_init,
                                        batch_size=batch_size,
                                        analyse_thresholds=analyse_thresholds)
+    # NEW: Set the data_source attribute so that _extract_bars can use it
+    bars.data_source = data_source
     imbalance_bars = bars.batch_run(file_path_or_df=file_path_or_df,
                                     verbose=verbose,
                                     to_csv=to_csv,
@@ -330,12 +345,15 @@ def get_const_tick_imbalance_bars_appending(file_path_or_df: Union[str, Iterable
                                             analyse_thresholds: bool = False,
                                             verbose: bool = True,
                                             to_csv: bool = False,
-                                            output_path: Optional[str] = None):
+                                            output_path: Optional[str] = None,
+                                            data_source: str = "binance"): # NEW
     bars = AppendingConstImbalanceBars(metric='tick_imbalance',
                                        expected_imbalance_window=expected_imbalance_window,
                                        exp_num_ticks_init=exp_num_ticks_init,
                                        batch_size=batch_size,
                                        analyse_thresholds=analyse_thresholds)
+    # NEW: Set the data_source attribute so that _extract_bars can use it
+    bars.data_source = data_source
     imbalance_bars = bars.batch_run(file_path_or_df=file_path_or_df,
                                     verbose=verbose,
                                     to_csv=to_csv,
@@ -392,7 +410,8 @@ def get_ema_dollar_run_bars_appending(file_path_or_df: Union[str, Iterable[str],
                                       analyse_thresholds: bool = False,
                                       verbose: bool = True,
                                       to_csv: bool = False,
-                                      output_path: Optional[str] = None):
+                                      output_path: Optional[str] = None,
+                                      data_source: str = "binance"):
     bars = AppendingEMARunBars(metric='dollar_run',
                                num_prev_bars=num_prev_bars,
                                expected_imbalance_window=expected_imbalance_window,
@@ -400,6 +419,8 @@ def get_ema_dollar_run_bars_appending(file_path_or_df: Union[str, Iterable[str],
                                exp_num_ticks_constraints=exp_num_ticks_constraints,
                                batch_size=batch_size,
                                analyse_thresholds=analyse_thresholds)
+    # NEW: Set the data_source attribute so that _extract_bars can use it
+    bars.data_source = data_source
     run_bars = bars.batch_run(file_path_or_df=file_path_or_df,
                               verbose=verbose,
                               to_csv=to_csv,
@@ -415,7 +436,8 @@ def get_ema_volume_run_bars_appending(file_path_or_df: Union[str, Iterable[str],
                                       analyse_thresholds: bool = False,
                                       verbose: bool = True,
                                       to_csv: bool = False,
-                                      output_path: Optional[str] = None):
+                                      output_path: Optional[str] = None,
+                                      data_source: str = "binance"):
     bars = AppendingEMARunBars(metric='volume_run',
                                num_prev_bars=num_prev_bars,
                                expected_imbalance_window=expected_imbalance_window,
@@ -423,6 +445,8 @@ def get_ema_volume_run_bars_appending(file_path_or_df: Union[str, Iterable[str],
                                exp_num_ticks_constraints=exp_num_ticks_constraints,
                                batch_size=batch_size,
                                analyse_thresholds=analyse_thresholds)
+    # NEW: Set the data_source attribute so that _extract_bars can use it
+    bars.data_source = data_source
     run_bars = bars.batch_run(file_path_or_df=file_path_or_df,
                               verbose=verbose,
                               to_csv=to_csv,
@@ -438,7 +462,8 @@ def get_ema_tick_run_bars_appending(file_path_or_df: Union[str, Iterable[str], p
                                     analyse_thresholds: bool = False,
                                     verbose: bool = True,
                                     to_csv: bool = False,
-                                    output_path: Optional[str] = None):
+                                    output_path: Optional[str] = None,
+                                    data_source: str = "binance"):
     bars = AppendingEMARunBars(metric='tick_run',
                                num_prev_bars=num_prev_bars,
                                expected_imbalance_window=expected_imbalance_window,
@@ -446,6 +471,8 @@ def get_ema_tick_run_bars_appending(file_path_or_df: Union[str, Iterable[str], p
                                exp_num_ticks_constraints=exp_num_ticks_constraints,
                                batch_size=batch_size,
                                analyse_thresholds=analyse_thresholds)
+    # NEW: Set the data_source attribute so that _extract_bars can use it
+    bars.data_source = data_source
     run_bars = bars.batch_run(file_path_or_df=file_path_or_df,
                               verbose=verbose,
                               to_csv=to_csv,
@@ -498,13 +525,16 @@ def get_const_dollar_run_bars_appending(file_path_or_df: Union[str, Iterable[str
                                         analyse_thresholds: bool = False,
                                         verbose: bool = True,
                                         to_csv: bool = False,
-                                        output_path: Optional[str] = None):
+                                        output_path: Optional[str] = None,
+                                        data_source: str = "binance"):
     bars = AppendingConstRunBars(metric='dollar_run',
                                  num_prev_bars=num_prev_bars,
                                  expected_imbalance_window=expected_imbalance_window,
                                  exp_num_ticks_init=exp_num_ticks_init,
                                  batch_size=batch_size,
                                  analyse_thresholds=analyse_thresholds)
+    # NEW: Set the data_source attribute so that _extract_bars can use it
+    bars.data_source = data_source
     run_bars = bars.batch_run(file_path_or_df=file_path_or_df,
                               verbose=verbose,
                               to_csv=to_csv,
@@ -519,13 +549,16 @@ def get_const_volume_run_bars_appending(file_path_or_df: Union[str, Iterable[str
                                         analyse_thresholds: bool = False,
                                         verbose: bool = True,
                                         to_csv: bool = False,
-                                        output_path: Optional[str] = None):
+                                        output_path: Optional[str] = None,
+                                        data_source: str = "binance"):
     bars = AppendingConstRunBars(metric='volume_run',
                                  num_prev_bars=num_prev_bars,
                                  expected_imbalance_window=expected_imbalance_window,
                                  exp_num_ticks_init=exp_num_ticks_init,
                                  batch_size=batch_size,
                                  analyse_thresholds=analyse_thresholds)
+    # NEW: Set the data_source attribute so that _extract_bars can use it
+    bars.data_source = data_source
     run_bars = bars.batch_run(file_path_or_df=file_path_or_df,
                               verbose=verbose,
                               to_csv=to_csv,
@@ -540,13 +573,16 @@ def get_const_tick_run_bars_appending(file_path_or_df: Union[str, Iterable[str],
                                       analyse_thresholds: bool = False,
                                       verbose: bool = True,
                                       to_csv: bool = False,
-                                      output_path: Optional[str] = None):
+                                      output_path: Optional[str] = None,
+                                      data_source: str = "binance"):
     bars = AppendingConstRunBars(metric='tick_run',
                                  num_prev_bars=num_prev_bars,
                                  expected_imbalance_window=expected_imbalance_window,
                                  exp_num_ticks_init=exp_num_ticks_init,
                                  batch_size=batch_size,
                                  analyse_thresholds=analyse_thresholds)
+    # NEW: Set the data_source attribute so that _extract_bars can use it
+    bars.data_source = data_source
     run_bars = bars.batch_run(file_path_or_df=file_path_or_df,
                               verbose=verbose,
                               to_csv=to_csv,

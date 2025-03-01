@@ -199,7 +199,11 @@ class BaseBars(ABC):
 
         :param test_batch: (pd.DataFrame) The first row of the dataset.
         """
-        assert test_batch.shape[1] == 3, 'Must have only 3 columns in csv: date_time, price, & volume.'
+        # assert test_batch.shape[1] == 3, 'Must have only 3 columns in csv: date_time, price, & volume.'
+        # Allow CSVs with either 3 columns (standard) or 4 columns (Binance with isBuyerMaker)
+        if test_batch.shape[1] not in [3, 4]:
+            raise AssertionError('CSV must have 3 columns (date_time, price, volume) or 4 columns (date_time, price, volume, isBuyerMaker).')
+        # Check types for price and volume (assumes price is float and volume is numeric)            
         assert isinstance(test_batch.iloc[0, 1], float), 'price column in csv not float.'
         assert not isinstance(test_batch.iloc[0, 2], str), 'volume column in csv not int or float.'
 
@@ -306,7 +310,7 @@ class BaseImbalanceBars(BaseBars):
 
     def __init__(self, metric: str, batch_size: int,
                  expected_imbalance_window: int, exp_num_ticks_init: int,
-                 analyse_thresholds: bool):
+                 analyse_thresholds: bool, data_source: str = None):
         """
         Constructor
 
@@ -319,6 +323,7 @@ class BaseImbalanceBars(BaseBars):
                                           form of Pandas DataFrame
         """
         BaseBars.__init__(self, metric, batch_size)
+        self.data_source = data_source  # Save data source (e.g., "binance")
 
         self.expected_imbalance_window = expected_imbalance_window
 
@@ -352,6 +357,11 @@ class BaseImbalanceBars(BaseBars):
 
         # Iterate over rows
         list_bars = []
+
+        # Initialize cumulative prices cache if not already set
+        if not hasattr(self, 'cum_prices'):
+            self.cum_prices = []        
+
         for row in data:
             # Set variables
             date_time = row[0]
@@ -359,8 +369,24 @@ class BaseImbalanceBars(BaseBars):
             price = float(row[1])
             volume = row[2]
             dollar_value = price * volume
-            signed_tick = self._apply_tick_rule(price)
+            
+            # Append current tick price to cumulative cache
+            self.cum_prices.append(price)
 
+            # --- ORIGINAL CODE (REMOVED) ---
+            # signed_tick = self._apply_tick_rule(price)
+            # ----------------------------------
+            # --- UPDATED CODE (ADDED) ---
+            # Override the tick rule if data_source is "binance" and the row contains the isBuyerMaker flag.
+            if hasattr(self, "data_source") and self.data_source == "binance" and len(row) > 3:
+                isBuyerMaker = row[3]
+                if isinstance(isBuyerMaker, str):
+                    isBuyerMaker = isBuyerMaker.lower() == 'true'
+                # For Binance, a True isBuyerMaker implies a seller-initiated trade (-1 tick)
+                signed_tick = -1 if isBuyerMaker else 1
+            else:
+                signed_tick = self._apply_tick_rule(price)
+            # ----------------------------
             if self.open_price is None:
                 self.open_price = price
 
@@ -444,7 +470,7 @@ class BaseRunBars(BaseBars):
 
     def __init__(self, metric: str, batch_size: int, num_prev_bars: int,
                  expected_imbalance_window: int,
-                 exp_num_ticks_init: int, analyse_thresholds: bool):
+                 exp_num_ticks_init: int, analyse_thresholds: bool, data_source: str = None):
         """
         Constructor
 
@@ -456,6 +482,7 @@ class BaseRunBars(BaseBars):
         :param analyse_thresholds: (bool) Flag to return thresholds values (thetas, exp_num_ticks, exp_runs) in Pandas DataFrame
         """
         BaseBars.__init__(self, metric, batch_size)
+        self.data_source = data_source  # Save data source (e.g., "binance")
 
         self.num_prev_bars = num_prev_bars
         self.expected_imbalance_window = expected_imbalance_window
@@ -495,6 +522,11 @@ class BaseRunBars(BaseBars):
 
         # Iterate over rows
         list_bars = []
+
+        # Initialize cumulative prices cache if not already set
+        if not hasattr(self, 'cum_prices'):
+            self.cum_prices = []
+
         for row in data:
             # Set variables
             date_time = row[0]
@@ -502,7 +534,25 @@ class BaseRunBars(BaseBars):
             price = float(row[1])
             volume = row[2]
             dollar_value = price * volume
+
+        # Append current tick price to cumulative cache
+        self.cum_prices.append(price)
+
+        # --- ORIGINAL CODE (REMOVED) ---
+        # signed_tick = self._apply_tick_rule(price)
+        # ----------------------------------
+
+        # --- UPDATED CODE (ADDED) ---
+        # Override the tick rule if data_source is "binance" and the row contains the isBuyerMaker flag.
+        if hasattr(self, "data_source") and self.data_source == "binance" and len(row) > 3:
+            isBuyerMaker = row[3]
+            if isinstance(isBuyerMaker, str):
+                isBuyerMaker = isBuyerMaker.lower() == 'true'
+            # For Binance, a True isBuyerMaker implies a seller-initiated trade (-1 tick)
+            signed_tick = -1 if isBuyerMaker else 1
+        else:
             signed_tick = self._apply_tick_rule(price)
+        # ----------------------------
 
             if self.open_price is None:
                 self.open_price = price
