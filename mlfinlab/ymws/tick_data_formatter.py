@@ -3,30 +3,55 @@ import pandas as pd
 class TickDataFormatter:
     """
     A class responsible for reading and formatting raw tick data CSV files.
-    The formatted output is a DataFrame with columns: [date_time, price, volume].
+    
+    By default, the formatted output is a DataFrame with columns: [date_time, price, volume].
+    For data_source 'binance', if preserve_aggressor is True, it will include the 'isBuyerMaker' column.
     """
-    def __init__(self, data_source: str, column_mappings: dict = None, column_positions: dict = None):
+    def __init__(self, data_source: str, preserve_aggressor: bool = True, column_mappings: dict = None, column_positions: dict = None):
         """
-        Initialize the formatter with mappings for the given data source.
+        Initialize the formatter.
         
         :param data_source: Identifier for the data source (e.g. 'binance', 'oanda').
-        :param column_mappings: A dict mapping original column names to standard names.
-        :param column_positions: A dict mapping column positions to standard names for headerless files.
+        :param preserve_aggressor: If True and data_source is 'binance', include the 'isBuyerMaker' column. -> default True (ymws)
+        :param column_mappings: Optional dict mapping original column names to standard names.
+        :param column_positions: Optional dict mapping column positions to standard names for headerless files.
         """
         self.data_source = data_source
-        # Provide default mappings if none are supplied.
-        self.column_mappings = column_mappings or {
-            "binance": {"timestamp": "date_time", "trade_price": "price", "trade_volume": "volume"},
-            "oanda": {"time": "date_time", "ask": "price", "size": "volume"}
-        }
-        self.column_positions = column_positions or {
-            "binance": {4: "date_time", 1: "price", 2: "volume"}
-        }
+        self.preserve_aggressor = preserve_aggressor
+        
+        if data_source == "binance":
+            if preserve_aggressor:
+                self.column_mappings = column_mappings or {
+                    "binance": {"time": "date_time", "price": "price", "qty": "volume", "isBuyerMaker": "isBuyerMaker"}
+                }
+                self.column_positions = column_positions or {
+                    "binance": {4: "date_time", 1: "price", 2: "volume", 5: "isBuyerMaker"}
+                }
+            else:
+                self.column_mappings = column_mappings or {
+                    "binance": {"time": "date_time", "price": "price", "qty": "volume"}
+                }
+                self.column_positions = column_positions or {
+                    "binance": {4: "date_time", 1: "price", 2: "volume"}
+                }
+        elif data_source == "oanda":
+            self.column_mappings = column_mappings or {
+                "oanda": {"time": "date_time", "ask": "price", "size": "volume"}
+            }
+            self.column_positions = column_positions or {
+                "oanda": {}
+            }
+        else:
+            # For other data sources, users can supply their own mappings.
+            self.column_mappings = column_mappings or {}
+            self.column_positions = column_positions or {}
 
     def detect_header(self, file_path: str) -> bool:
         """
         Determines whether the CSV file at file_path contains a header.
-        Returns True if a header is detected, False otherwise.
+        
+        :param file_path: Path to the CSV file.
+        :return: True if a header is detected, False otherwise.
         """
         with open(file_path, 'r') as f:
             for line in f:
@@ -42,15 +67,13 @@ class TickDataFormatter:
                 float(token)
                 return True
             except ValueError:
-                # Allow boolean tokens as well.
                 return token.lower() in {"true", "false"}
 
-        # If every token can be interpreted as a number or boolean, assume headerless.
         return not (tokens and all(is_data_token(token) for token in tokens))
 
     def load_and_format_dataframe(self, file_path: str) -> pd.DataFrame:
         """
-        Loads a CSV file, extracts the relevant columns, renames them, and reorders to [date_time, price, volume].
+        Loads a CSV file, extracts the relevant columns, renames them, and reorders them.
         
         :param file_path: Path to the CSV file.
         :return: A formatted pandas DataFrame.
@@ -70,19 +93,21 @@ class TickDataFormatter:
             usecols = list(positions.keys())
             df = pd.read_csv(file_path, usecols=usecols, header=None, sep=",")
             df = df.rename(columns=positions)
-        # Reorder columns to the expected format.
-        df = df[['date_time', 'price', 'volume']]
+        
+        # Reorder columns: include aggressor if requested and available.
+        if self.data_source == "binance" and self.preserve_aggressor and "isBuyerMaker" in df.columns:
+            df = df[['date_time', 'price', 'volume', 'isBuyerMaker']]
+        else:
+            df = df[['date_time', 'price', 'volume']]
         return df
-
 
     def load_and_format_dataframe_in_batches(self, file_path: str, batch_size: int):
         """
-        Loads a CSV file in batches (chunks), extracts the relevant columns,
-        renames them, and reorders to [date_time, price, volume].
+        Loads a CSV file in batches (chunks) and formats each batch.
         
         :param file_path: Path to the CSV file.
         :param batch_size: Number of rows per batch.
-        :return: A generator yielding formatted pandas DataFrames.
+        :yield: Formatted pandas DataFrames for each batch.
         """
         has_header = self.detect_header(file_path)
         if has_header:
@@ -93,7 +118,10 @@ class TickDataFormatter:
             reader = pd.read_csv(file_path, usecols=usecols, sep=",", chunksize=batch_size)
             for chunk in reader:
                 chunk = chunk.rename(columns=mapping)
-                yield chunk[['date_time', 'price', 'volume']]
+                if self.data_source == "binance" and self.preserve_aggressor and "isBuyerMaker" in chunk.columns:
+                    yield chunk[['date_time', 'price', 'volume', 'isBuyerMaker']]
+                else:
+                    yield chunk[['date_time', 'price', 'volume']]
         else:
             positions = self.column_positions.get(self.data_source)
             if positions is None:
@@ -102,4 +130,7 @@ class TickDataFormatter:
             reader = pd.read_csv(file_path, usecols=usecols, header=None, sep=",", chunksize=batch_size)
             for chunk in reader:
                 chunk = chunk.rename(columns=positions)
-                yield chunk[['date_time', 'price', 'volume']]
+                if self.data_source == "binance" and self.preserve_aggressor and "isBuyerMaker" in chunk.columns:
+                    yield chunk[['date_time', 'price', 'volume', 'isBuyerMaker']]
+                else:
+                    yield chunk[['date_time', 'price', 'volume']]

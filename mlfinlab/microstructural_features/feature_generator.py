@@ -209,8 +209,8 @@ class MicrostructuralFeaturesGenerator:
     def _extract_bars(self, data):
         """
         For loop which calculates features for formed bars using trades data
-
-        :param data: (tuple) Contains 3 columns - date_time, price, and volume.
+    
+        :param data: (tuple) Contains 3 or 4 columns – date_time, price, volume, and optionally isBuyerMaker.
         """
 
         # Iterate over rows
@@ -226,7 +226,18 @@ class MicrostructuralFeaturesGenerator:
             # Append current tick price to the cum_prices cache (NEW)
             self.cum_prices.append(price)
 
-            signed_tick = self._apply_tick_rule(price)
+            # If using binance data and the isBuyerMaker flag is provided (4th column), override the tick rule.
+            if self.data_source == "binance" and len(row) > 3:
+                isBuyerMaker = row[3]
+                # Convert string representations to boolean if needed.
+                if isinstance(isBuyerMaker, str):
+                    isBuyerMaker = isBuyerMaker.lower() == 'true'
+                # Determine trade direction: True => seller-initiated (-1), False => buyer-initiated (+1)
+                signed_tick = -1 if isBuyerMaker else 1
+            else:
+                signed_tick = self._apply_tick_rule(price)
+
+            # signed_tick = self._apply_tick_rule(price)
 
             self.tick_num += 1
 
@@ -248,7 +259,8 @@ class MicrostructuralFeaturesGenerator:
 
                 # Take the next tick number
                 try:
-                    self.current_bar_tick_num = self.tick_num_generator.__next__()
+                    # self.current_bar_tick_num = self.tick_num_generator.__next__()
+                    self.current_bar_tick_num = next(self.tick_num_generator)
                 except StopIteration:
                     return list_bars, True  # Looped through all bar index
                 # Reset cache
@@ -387,12 +399,14 @@ class MicrostructuralFeaturesGenerator:
     def _assert_csv(test_batch):
         """
         Tests that the csv file read has the format: date_time, price, and volume.
+        or date_time, price, volume, isBuyerMaker (for binance data).
         If not then the user needs to create such a file. This format is in place to remove any unwanted overhead.
 
         :param test_batch: (pd.DataFrame) the first row of the dataset.
         :return: (None)
         """
-        assert test_batch.shape[1] == 3, 'Must have only 3 columns in csv: date_time, price, & volume.'
+        # assert test_batch.shape[1] == 3, 'Must have only 3 columns in csv: date_time, price, & volume.'
+        assert test_batch.shape[1] in (3, 4), 'CSV must have 3 columns (date_time, price, volume) or 4 columns (with isBuyerMaker for binance).'
         assert isinstance(test_batch.iloc[0, 1], float), 'price column in csv not float.'
         assert not isinstance(test_batch.iloc[0, 2], str), 'volume column in csv not int or float.'
 
