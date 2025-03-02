@@ -46,7 +46,7 @@ class TickDataFormatter:
                 self.data_source: {"time": "date_time", "price": "price", "volume": "volume"}
             }
             self.column_positions = column_positions or {
-                self.data_source: {0: "date_time", 1: "price", 2: "volume"}
+                self.data_source: {4: "date_time", 1: "price", 2: "volume"}
             }            
 
     def detect_header(self, file_path: str) -> bool:
