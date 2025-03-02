@@ -25,6 +25,8 @@ class BasisBarBuild():
     # For CSV files without headers (i.e. columns are positional)
     COLUMN_POSITIONS = {
         "binance": {4: "date_time", 1: "price", 2: "volume", 5: "isBuyerMaker"},  # Map position-based indexing
+        "binancefake": {4: "date_time", 1: "price", 2: "volume"},  # Map position-based indexing
+        "oanda": {4: "date_time", 1: "price", 2: "volume"},  # Map position-based indexing
     }
 
     BAR_TYPE = {
