@@ -34,17 +34,20 @@ class TickDataFormatter:
                 self.column_positions = column_positions or {
                     "binance": {4: "date_time", 1: "price", 2: "volume"}
                 }
-        elif data_source == "oanda":
+        elif data_source == "oanda": # oanda essentially belongs to else case for now but could be changed in the future (ymws)
             self.column_mappings = column_mappings or {
                 "oanda": {"time": "date_time", "ask": "price", "size": "volume"}
             }
             self.column_positions = column_positions or {
-                "oanda": {}
+                "oanda": {4: "date_time", 1: "price", 2: "volume"}
             }
         else:
-            # For other data sources, users can supply their own mappings.
-            self.column_mappings = column_mappings or {}
-            self.column_positions = column_positions or {}
+            self.column_mappings = column_mappings or {
+                self.data_source: {"time": "date_time", "price": "price", "volume": "volume"}
+            }
+            self.column_positions = column_positions or {
+                self.data_source: {0: "date_time", 1: "price", 2: "volume"}
+            }            
 
     def detect_header(self, file_path: str) -> bool:
         """
