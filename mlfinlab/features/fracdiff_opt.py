@@ -92,7 +92,10 @@ def frac_diff_expanding_jit(process, diff_amt, thresh=0.01):
 def optimal_frac_diff(process, thresh=0.01, method='fixed',
                       adf_pval_threshold=0.05, d_min=0, d_max=2, grid_steps=21):
     """
-    Parameters:
+    Returns the fractionally differentiated version of the input series along with the
+    optimal differencing amount d* determined via a grid search using the ADF test.
+    
+        Parameters:
       process : pd.Series, pd.DataFrame, or np.ndarray
           Input time series data.
       thresh : float, default 0.01
@@ -110,8 +113,9 @@ def optimal_frac_diff(process, thresh=0.01, method='fixed',
           Number of candidate d values to test.
     
     Returns:
-      pd.DataFrame
-          The fractionally differentiated series computed using the optimal d*.
+      tuple:
+        - pd.DataFrame: The fractionally differentiated series computed using the optimal d*.
+        - float: The optimal d value found during the grid search.
     """
     # Ensure input is a DataFrame.
     if isinstance(process, (pd.Series, np.ndarray)):
@@ -153,7 +157,7 @@ def optimal_frac_diff(process, thresh=0.01, method='fixed',
     else:
         final_series = frac_diff_expanding_jit(process, optimal_d, thresh)
     
-    return final_series
+    return final_series, optimal_d
 
 # ---------------------------------------------------------------------------
 # Example usage:
