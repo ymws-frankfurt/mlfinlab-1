@@ -273,16 +273,33 @@ def raw_moment(central_moments, dist_mean):
     return raw_moments
 
 
-def most_likely_parameters(data, ignore_columns='error', res=10_000):
-    """
-    Determines the most likely parameter estimate using a KDE from the DataFrame of the results of the fit from the
-    M2N object.
+# def most_likely_parameters(data, ignore_columns='error', res=10_000):
+#     """
+#     Determines the most likely parameter estimate using a KDE from the DataFrame of the results of the fit from the
+#     M2N object.
 
-    :param data: (pandas.DataFrame) Contains parameter estimates from all runs.
-    :param ignore_columns: (string, list) Column or columns to exclude from analysis.
-    :param res: (int) Resolution of the kernel density estimate.
-    :return: (dict) Labels and most likely estimates for parameters.
-    """
+#     :param data: (pandas.DataFrame) Contains parameter estimates from all runs.
+#     :param ignore_columns: (string, list) Column or columns to exclude from analysis.
+#     :param res: (int) Resolution of the kernel density estimate.
+#     :return: (dict) Labels and most likely estimates for parameters.
+#     """
+#     df_results = data.copy()
+#     if isinstance(ignore_columns, str):
+#         ignore_columns = [ignore_columns]
+
+#     columns = [c for c in df_results.columns if c not in ignore_columns]
+#     d_results = {}
+#     for col in columns:
+#         x_range = np.linspace(df_results[col].min(), df_results[col].max(), num=res)
+#         kde = gaussian_kde(df_results[col].to_numpy())
+#         y_kde = kde.evaluate(x_range)
+#         top_value = round(x_range[np.argmax(y_kde)], 5)
+#         d_results[col] = top_value
+
+#     return d_results
+
+# https://chatgpt.com/share/67c82953-a3d0-8000-900a-af5da9d1bd05
+def most_likely_parameters(data, ignore_columns='error', res=10_000, var_threshold=1e-8):
     df_results = data.copy()
     if isinstance(ignore_columns, str):
         ignore_columns = [ignore_columns]
@@ -290,11 +307,16 @@ def most_likely_parameters(data, ignore_columns='error', res=10_000):
     columns = [c for c in df_results.columns if c not in ignore_columns]
     d_results = {}
     for col in columns:
-        x_range = np.linspace(df_results[col].min(), df_results[col].max(), num=res)
-        kde = gaussian_kde(df_results[col].to_numpy())
-        y_kde = kde.evaluate(x_range)
-        top_value = round(x_range[np.argmax(y_kde)], 5)
-        d_results[col] = top_value
+        col_data = df_results[col].to_numpy()
+        if np.var(col_data) < var_threshold:
+            # If variance is too low, return the constant value.
+            d_results[col] = float(np.mean(col_data))
+        else:
+            x_range = np.linspace(col_data.min(), col_data.max(), num=res)
+            kde = gaussian_kde(col_data)
+            y_kde = kde.evaluate(x_range)
+            top_value = round(x_range[np.argmax(y_kde)], 5)
+            d_results[col] = top_value
 
     return d_results
 
@@ -311,7 +333,7 @@ def iter_4_jit(mu_2, p_1, m_1, m_2, m_3, m_4):  # pragma: no cover
     :return: (list) List of estimated parameter if no invalid values are encountered (e.g. complex values,
         divide-by-zero), otherwise an empty list is returned.
     """
-    param_list = np.empty(0, dtype=float64)
+    param_list = np.empty(0, dtype=np.float64)
 
     # Using a while-loop here to be able to use 'break' functionality.
     # We need to stop the calculation at any given step to avoid throwing warnings or errors,
@@ -369,7 +391,7 @@ def iter_4_jit(mu_2, p_1, m_1, m_2, m_3, m_4):  # pragma: no cover
             break
 
         # Add all new parameter estimates to the return list if no break has occurred before now.
-        param_list = np.array([mu_1, mu_2, sigma_1, sigma_2, p_1], dtype=float64)
+        param_list = np.array([mu_1, mu_2, sigma_1, sigma_2, p_1], dtype=np.float64)
 
         # We only want this to execute once at most, so call a final break if one hasn't been called yet.
         break
@@ -389,7 +411,7 @@ def iter_5_jit(mu_2, p_1, m_1, m_2, m_3, m_4, m_5):  # pragma: no cover
     :return: (list) List of estimated parameter if no invalid values are encountered (e.g. complex values,
         divide-by-zero), otherwise an empty list is returned.
     """
-    param_list = np.empty(0, dtype=float64)
+    param_list = np.empty(0, dtype=np.float64)
 
     # Using a while-loop here to be able to use 'break' functionality.
     # We need to stop the calculation at any given step to avoid throwing warnings or errors, and be in control
@@ -455,7 +477,7 @@ def iter_5_jit(mu_2, p_1, m_1, m_2, m_3, m_4, m_5):  # pragma: no cover
             break
 
         # Add all new parameter estimates to the return list if no break has occurred before now.
-        param_list = np.array([mu_1, mu_2, sigma_1, sigma_2, p_1], dtype=float64)
+        param_list = np.array([mu_1, mu_2, sigma_1, sigma_2, p_1], dtype=np.float64)
 
         # We only want this to execute once at most, so call a final break if one hasn't been called yet.
         break
