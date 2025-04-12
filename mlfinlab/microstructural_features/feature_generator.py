@@ -3,6 +3,7 @@ Inter-bar feature generator which uses trades data and bars index to calculate i
 """
 import pandas as pd
 import numpy as np
+from itertools import chain
 
 from mlfinlab.ymws.tick_data_formatter import TickDataFormatter
 from mlfinlab.ymws.KCA_composite import fitKCA
@@ -51,12 +52,12 @@ class MicrostructuralFeaturesGenerator:
 
     """
 
-    def __init__(self, trades_input: (str, pd.DataFrame), tick_num_series: pd.Series, batch_size: int = 2e7,
+    def __init__(self, trades_input: (str, list, pd.DataFrame), tick_num_series: pd.Series, batch_size: int = 2e7,
                  volume_encoding: dict = None, pct_encoding: dict = None, data_source="binance", roll_window=1000):
         """
         Constructor
 
-        :param trades_input: (str or pd.DataFrame) Path to the csv file or Pandas DataFrame containing raw tick data
+        :param trades_input: (str or pd.DataFrame) Path to the csv file, a list of csv file paths or Pandas DataFrame containing raw tick data
                                                    in the format[date_time, price, volume]
         :param tick_num_series: (pd.Series) Series of tick number where bar was formed.
         :param batch_size: (int) Number of rows to read in from the csv, per batch.
@@ -65,7 +66,7 @@ class MicrostructuralFeaturesGenerator:
         :param data_source: (str) Identifier for the data source. (o3-mini-high)
         """
         self.tick_num_series = tick_num_series
-        self.batch_size = batch_size
+        self.batch_size = int(batch_size)
         self.volume_encoding = volume_encoding
         self.pct_encoding = pct_encoding
         self.data_source = data_source
@@ -74,15 +75,20 @@ class MicrostructuralFeaturesGenerator:
         # Initialize the formatter.
         self.formatter = TickDataFormatter(data_source=self.data_source)
 
-        # If trades_input is a file path, use batch processing.
+        # Accept trades_input as a single file path, list of file paths, or a DataFrame.
         if isinstance(trades_input, str):
             self.generator_object = self.formatter.load_and_format_dataframe_in_batches(trades_input, self.batch_size)
+        elif isinstance(trades_input, list):
+            # Create a chained generator that loops over each file's batches sequentially.
+            generators = []
+            for file in trades_input:
+                generators.append(self.formatter.load_and_format_dataframe_in_batches(str(file), self.batch_size))
+            self.generator_object = chain(*generators)
         elif isinstance(trades_input, pd.DataFrame):
-            # If it's already a DataFrame, you might decide whether to batch it:
             self.generator_object = crop_data_frame_in_batches(trades_input, self.batch_size)
         else:
-            raise ValueError('trades_input must be a file path or a pandas DataFrame')
-        
+            raise ValueError('trades_input must be a file path, list of file paths, or a pandas DataFrame')
+                
         # Setup tick number generator.
         self.tick_num_generator = iter(tick_num_series)
         self.current_bar_tick_num = next(self.tick_num_generator)
