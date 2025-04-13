@@ -324,8 +324,8 @@ class MicrostructuralFeaturesGenerator:
         features.extend(get_trades_based_amihud_lambda(self.log_ret, self.dollar_size))  # Amihud lambda
         features.extend(get_trades_based_hasbrouck_lambda(self.log_ret, self.dollar_size, self.tick_rule))  # Hasbrouck lambda
 
-        # NEW: Compute the runs test z-score using the raw tick prices for the current bar.
-        runs_z = runs_z_score(self.cum_prices)
+        # NEW: Compute the runs test z-score using the tick_rule series for the current bar.
+        runs_z = runs_z_score(self.tick_rule)
         features.append(runs_z)
 
         # Entropy features for tick rule

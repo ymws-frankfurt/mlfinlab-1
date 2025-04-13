@@ -2,59 +2,45 @@ import math
 import itertools
 
 
-def runs_z_score(prices):
+def runs_z_score(signed_ticks):
     """
-    Given a list of prices, compute the Wald-Wolfowitz runs test z-score.
-    This function converts prices into signed ticks, counts the number
-    of runs (consecutive groups), and then calculates the standardized
-    z-score based on the observed number of runs.
+    Given a list of signed ticks (e.g., 1 for buy-initiated trades, -1 for sell-initiated trades),
+    compute the Wald-Wolfowitz runs test z-score.
+    
+    A run is defined as a sequence of consecutive identical tick values. This function computes
+    the number of runs in the provided tick series and then calculates a z-score based on the 
+    expected number of runs under a random hypothesis.
+    
+    Parameters:
+        signed_ticks (list of int): A list of signed ticks, where each entry is typically 1 or -1.
     
     Returns:
-        z: The test statistic, which can be used as a feature.
+        float: The standardized test statistic (z-score) representing the deviation of the observed 
+               number of runs from its expected value under randomness.
     """
-    def _compute_signed_ticks(prices):
-        """
-        Convert a list of prices into signed ticks:
-        - 1 if price increases (buy-initiated)
-        - -1 if price decreases (sell-initiated)
-        - If the price is unchanged, inherit the previous tick sign.
-        The first tick is assumed to be 1.
-        """
-        if not prices:
-            return []
-        ticks = [1]  # default for the first tick
-        for prev, curr in zip(prices, prices[1:]):
-            diff = curr - prev
-            if diff > 0:
-                ticks.append(1)
-            elif diff < 0:
-                ticks.append(-1)
-            else:
-                ticks.append(ticks[-1])
-        return ticks
+    if not signed_ticks:
+        return 0.0
 
-    ticks = _compute_signed_ticks(prices)
-    
     # Count the number of runs using itertools.groupby
-    R = sum(1 for _ in itertools.groupby(ticks))
+    R = sum(1 for _ in itertools.groupby(signed_ticks))
     
-    # Count of positive ticks (assumed "buy") and negative ticks ("sell")
-    n1 = ticks.count(1)
-    n2 = ticks.count(-1)
+    # Count the occurrences of 1's (buy ticks) and -1's (sell ticks)
+    n1 = signed_ticks.count(1)
+    n2 = signed_ticks.count(-1)
     n = n1 + n2
-    
-    # Guard against division by zero or insufficient data
+
+    # If there are fewer than two ticks, not enough data to perform the test.
     if n < 2:
         return 0.0
-    
-    # Compute standard error and expected runs under randomness.
-    seR = math.sqrt(((2 * n1 * n2) * (2 * n1 * n2 - n)) / (n**2 * (n - 1)))
+
+    # Expected number of runs and standard error under the randomness assumption.
     muR = (2 * n1 * n2) / n + 1
+    seR = math.sqrt(((2 * n1 * n2) * (2 * n1 * n2 - n)) / (n**2 * (n - 1)))
     
-    # If standard error is zero (or nearly zero), return 0 to avoid division by zero.
+    # Avoid division by zero in case of a degenerate sequence.
     if seR == 0:
         return 0.0
-    
-    # Calculate and return the z-score.
+
+    # Return the computed z-score.
     return (R - muR) / seR
 
