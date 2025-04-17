@@ -29,19 +29,20 @@ def forecast_loop(x0, P0, A, Q, fwd):
 
 # -----------------------------------------------------------------------------
 # Optimized KCA implementation with pre-allocation and manual forecast loop.
-def fitKCA_optimized(t, z, q, fwd=0):
+def fitKCA_optimized(t, z, q, fwd=0, truncate_past=True):
     """
     Optimized implementation of Kinetic Component Analysis (KCA).
 
     Inputs:
-      t   : 1D numpy array of time indices.
-      z   : 1D numpy array of measurements.
-      q   : Scalar to seed the process noise covariance Q.
-      fwd : Number of forecast steps to compute (default=0).
+      t           : 1D numpy array of time indices.
+      z           : 1D numpy array of measurements.
+      q           : Scalar to seed the process noise covariance Q.
+      fwd         : Number of forecast steps to compute (default=0).
+      truncate_past: Boolean flag. If True and fwd > 0, returns only forecast states 
+                     (i.e., truncates the past smoothed states from the output).
 
     Returns:
-      x_mean_total: Smoothed state means (and forecasted means if fwd > 0) 
-                    for [position, velocity, acceleration].
+      x_mean_total: Smoothed state means (or forecasted means only if truncate_past is True).
       x_std_total : Standard deviations (from state covariances) for each state.
       x_cov_total : Full state covariance matrices.
     """
@@ -98,26 +99,36 @@ def fitKCA_optimized(t, z, q, fwd=0):
     for i in range(n_steps):
         x_std_total[i, :] = np.sqrt(np.diag(x_cov_total[i, :, :]))
     
-    return x_mean_total, x_std_total, x_cov_total
+    if fwd > 0 and truncate_past:
+        # Only interested in future states; return forecast part only.
+        x_mean_forecast = x_mean_total[n_smoothed:, :]
+        x_cov_forecast = x_cov_total[n_smoothed:, :, :]
+        x_std_forecast = np.empty((fwd, n_state))
+        for i in range(fwd):
+            x_std_forecast[i, :] = np.sqrt(np.diag(x_cov_forecast[i, :, :]))
+        return x_mean_forecast, x_std_forecast, x_cov_forecast
+    else:
+        return x_mean_total, x_std_total, x_cov_total
 
 # -----------------------------------------------------------------------------
 # Function to process multiple time series in parallel using Joblib.
-def fitKCA_parallel(t_list, z_list, q, fwd=0, n_jobs=-1):
+def fitKCA_parallel(t_list, z_list, q, fwd=0, n_jobs=-1, truncate_past=True):
     """
     Run fitKCA_optimized on multiple time series in parallel.
     
     Inputs:
-      t_list: List of numpy arrays (time indices for each series).
-      z_list: List of numpy arrays (observations for each series).
-      q     : Scalar for the process noise covariance.
-      fwd   : Forecast steps.
-      n_jobs: Number of parallel jobs (-1 uses all available cores).
+      t_list      : List of numpy arrays (time indices for each series).
+      z_list      : List of numpy arrays (observations for each series).
+      q           : Scalar for the process noise covariance.
+      fwd         : Forecast steps.
+      n_jobs      : Number of parallel jobs (-1 uses all available cores).
+      truncate_past: Boolean flag. If True, each call to fitKCA_optimized returns only forecast states.
     
     Returns:
       List of tuples (x_mean_total, x_std_total, x_cov_total) for each series.
     """
     results = Parallel(n_jobs=n_jobs)(
-        delayed(fitKCA_optimized)(t, z, q, fwd) for t, z in zip(t_list, z_list)
+        delayed(fitKCA_optimized)(t, z, q, fwd, truncate_past) for t, z in zip(t_list, z_list)
     )
     return results
 
@@ -131,34 +142,34 @@ if __name__ == '__main__':
     np.random.seed(0)
     noise = 0.5 * np.random.randn(n_obs)
     z = signal + noise
-
     q = 0.001   # Process noise seed
-    fwd_steps = 40  # Forecast 20 steps ahead
-
+    fwd_steps = 20  # Forecast 20 steps ahead
+    
     # Run the optimized KCA on the sample series.
-    x_mean_total, x_std_total, x_cov_total = fitKCA_optimized(t, z, q, fwd=fwd_steps)
+    x_mean_forecast, x_std_forecast, x_cov_forecast = fitKCA_optimized(t, z, q, fwd=fwd_steps, truncate_past=True)
     
     # Construct a time vector for the forecasted series.
     dt = (t[-1] - t[0]) / n_obs
-    t_total = np.linspace(t[0], t[-1] + fwd_steps * dt, n_obs + fwd_steps)
+    t_forecast = np.linspace(t[-1] + dt, t[-1] + fwd_steps * dt, fwd_steps)
     
-    # Plot the results: observations, estimated position, and a 2-standard-deviation band.
+    # Plot the results: observations, estimated position forecast, and a 2-standard-deviation band.
     plt.figure(figsize=(10, 6))
     plt.plot(t, z, 'kx', label='Observations')
-    plt.plot(t_total, x_mean_total[:, 0], 'b-', label='Estimated Position')
-    plt.fill_between(t_total,
-                     x_mean_total[:, 0] - 2 * x_std_total[:, 0],
-                     x_mean_total[:, 0] + 2 * x_std_total[:, 0],
+    plt.plot(t_forecast, x_mean_forecast[:, 0], 'b-', label='Forecasted Position')
+    plt.fill_between(t_forecast,
+                     x_mean_forecast[:, 0] - 2 * x_std_forecast[:, 0],
+                     x_mean_forecast[:, 0] + 2 * x_std_forecast[:, 0],
                      color='b', alpha=0.2, label='Confidence Interval')
     plt.xlabel('Time')
     plt.ylabel('Value')
-    plt.title('Optimized KCA with Forecasting')
+    plt.title('Optimized KCA Forecast (Future States Only)')
     plt.legend()
     plt.show()
+
     
     # Example of parallel processing with multiple time series:
     # (For demonstration, we use two copies of the same series.)
-    t_list = [t, t]
-    z_list = [z, z]
-    results = fitKCA_parallel(t_list, z_list, q, fwd=fwd_steps, n_jobs=-1)
+    # t_list = [t, t]
+    # z_list = [z, z]
+    # results = fitKCA_parallel(t_list, z_list, q, fwd=fwd_steps, n_jobs=-1)
     # results is a list of tuples with the KCA outputs for each series.

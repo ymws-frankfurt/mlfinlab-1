@@ -6,7 +6,8 @@ import numpy as np
 from itertools import chain
 
 from mlfinlab.ymws.tick_data_formatter import TickDataFormatter
-from mlfinlab.ymws.KCA_composite import fitKCA
+# from mlfinlab.ymws.KCA_raw import fitKCA
+from mlfinlab.ymws.KCA_intra_posvelacc import generate_intra_kcapva
 
 from mlfinlab.microstructural_features.entropy import get_shannon_entropy, get_plug_in_entropy, get_lempel_ziv_entropy_fast#, \
     #get_konto_entropy_nb
@@ -53,7 +54,11 @@ class MicrostructuralFeaturesGenerator:
     """
 
     def __init__(self, trades_input: (str, list, pd.DataFrame), tick_num_series: pd.Series, batch_size: int = 2e7,
-                 volume_encoding: dict = None, pct_encoding: dict = None, data_source="binance", roll_window=1000):
+                 volume_encoding: dict = None, pct_encoding: dict = None, data_source="binance", roll_window=1000,
+                 # New parameters for intra–bar features:
+                 intra_kca_fwd: list = None,     # list of forecast horizons for intra features
+                 intra_kca_q: float = 0.001   # process noise parameter for KCA
+                 ):
         """
         Constructor
 
@@ -64,6 +69,9 @@ class MicrostructuralFeaturesGenerator:
         :param volume_encoding: (dict) Dictionary of encoding scheme for trades size used to calculate entropy on encoded messages
         :param pct_encoding: (dict) Dictionary of encoding scheme for log returns used to calculate entropy on encoded messages
         :param data_source: (str) Identifier for the data source. (o3-mini-high)
+        :param intra_kca_fwd: List of forecast horizon(s) for intra-bar features.
+                          For example: [1, 10, 100, 250, 1000]. Defaults to [0] if not provided.
+        :param intra_kca_q: Scalar to seed process noise for intra-KCA.        
         """
         self.tick_num_series = tick_num_series
         self.batch_size = int(batch_size)
@@ -106,9 +114,6 @@ class MicrostructuralFeaturesGenerator:
         # NEW: Cache to store raw tick prices for computing roll measure/impact.
         self.cum_prices = []
 
-        # Entropy properties
-        self.volume_encoding = volume_encoding
-        self.pct_encoding = pct_encoding
         #self.entropy_types = ['shannon', 'plug_in', 'lempel_ziv', 'konto']
         self.entropy_types = ['shannon', 'plug_in', 'lempel_ziv']
 
@@ -116,6 +121,83 @@ class MicrostructuralFeaturesGenerator:
         self.prev_price = None
         self.prev_tick_rule = 0
         self.tick_num = 0
+
+        # ---- New intra–bar parameters ----
+        if intra_kca_fwd is None:
+            self.intra_kca_fwd = [0]  # No forecast by default – or you can choose a default list.
+        else:
+            self.intra_kca_fwd = intra_kca_fwd
+        self.intra_kca_q = intra_kca_q
+
+        # NEW: Allow intra_kca_q to be provided as a list; if not, convert it to a single‐element list.
+        if not isinstance(intra_kca_q, list):
+            self.intra_kca_q = [intra_kca_q]
+        else:
+            self.intra_kca_q = intra_kca_q
+
+    # --------------------------------------------------------------------------
+    def _get_intra_kcafeatures(self, tick_series):
+        """
+        Compute intra–bar KCA features from the tick series (signed ticks)
+        using generate_intra_kcapva from KCA_intra_posvelacc.py.
+        
+        Handles multiple values of the process noise parameter (q) by looping over each
+        value in self.intra_kca_q and each forecast horizon in self.intra_kca_fwd.
+        :param tick_series: List or array of signed ticks for the current bar.
+        :return: Dictionary of intra features with keys such as 
+                 'intra_kca_position_fwd_{f}_q_{q}', etc.
+        """
+        import numpy as np
+        if len(tick_series) == 0:
+            result = {}
+            for q_val in self.intra_kca_q:
+                for f in self.intra_kca_fwd:
+                    for key in ['position', 'velocity', 'acceleration', 
+                                'position_std', 'velocity_std', 'acceleration_std',
+                                'position_t', 'velocity_t', 'acceleration_t']:
+                        result[f"intra_kca_{key}_fwd_{f}_q_{q_val}"] = np.nan
+            return result
+        
+        price_series = np.array(tick_series, dtype=float)
+        n = len(price_series)
+        # --- GUARD AGAINST TOO‐SHORT SERIES (avoids EM division by zero) ---
+        if n <= 1:
+            result = {}
+            for q_val in self.intra_kca_q:
+                for f in self.intra_kca_fwd:
+                    for key in ['position', 'velocity', 'acceleration',
+                                'position_std', 'velocity_std', 'acceleration_std',
+                                'position_t', 'velocity_t', 'acceleration_t']:
+                        result[f"intra_kca_{key}_fwd_{f}_q_{q_val}"] = np.nan
+            return result
+        # --- END GUARD ---
+        result = {}
+        
+        # For each process noise parameter and forecast horizon, call KCA.
+        for q_val in self.intra_kca_q:
+            # For consistency, determine the maximum forecast horizon needed for this q.
+            forecast_list = [f for f in self.intra_kca_fwd if f > 0]
+            call_fwd = max(forecast_list) if forecast_list else 0
+
+            # Call generate_intra_kcapva with the current q_val.
+            features = generate_intra_kcapva(price_series, q_val, forecast_steps=call_fwd)
+            
+            for f in self.intra_kca_fwd:
+                if f == 0:
+                    idx = n - 1
+                else:
+                    idx = n + f - 1
+                result[f"intra_kca_position_fwd_{f}_q_{q_val}"] = features['position'][idx]
+                result[f"intra_kca_velocity_fwd_{f}_q_{q_val}"] = features['velocity'][idx]
+                result[f"intra_kca_acceleration_fwd_{f}_q_{q_val}"] = features['acceleration'][idx]
+                result[f"intra_kca_position_std_fwd_{f}_q_{q_val}"] = features['position_std'][idx]
+                result[f"intra_kca_velocity_std_fwd_{f}_q_{q_val}"] = features['velocity_std'][idx]
+                result[f"intra_kca_acceleration_std_fwd_{f}_q_{q_val}"] = features['acceleration_std'][idx]
+                result[f"intra_kca_position_t_fwd_{f}_q_{q_val}"] = features['position_t'][idx]
+                result[f"intra_kca_velocity_t_fwd_{f}_q_{q_val}"] = features['velocity_t'][idx]
+                result[f"intra_kca_acceleration_t_fwd_{f}_q_{q_val}"] = features['acceleration_t'][idx]
+        return result
+
 
     def get_features(self, verbose=True, to_csv=False, output_path=None):
         """
@@ -159,6 +241,20 @@ class MicrostructuralFeaturesGenerator:
         if self.pct_encoding is not None:
             for en_type in self.entropy_types:
                 cols += ['pct_entropy_' + en_type]
+
+      # --- NEW: Extend columns for intra–KCA features ---
+        intra_keys = [
+            'position','velocity','acceleration',
+            'position_std','velocity_std','acceleration_std',
+            'position_t','velocity_t','acceleration_t'
+        ]
+        for q_val in self.intra_kca_q:
+            for f in self.intra_kca_fwd:
+                for key in intra_keys:
+                    cols.append(f"intra_kca_{key}_fwd_{f}_q_{q_val}")
+
+        # Now cols has exactly as many names as values in each `features` list.
+
 
         # If output is to be written to CSV, prepare the file
         if to_csv:
@@ -351,6 +447,16 @@ class MicrostructuralFeaturesGenerator:
             features.append(get_lempel_ziv_entropy_fast(message))
             #features.append(get_konto_entropy_nb(message))
 
+        # ---- NEW: Compute intra–bar features from the accumulated signed tick series.
+        intra_feats = self._get_intra_kcafeatures(self.tick_rule)
+        features.extend(list(intra_feats.values()))
+        
+        # Reset the tick_rule cache for the next bar. -> DISABLED
+        # self.tick_rule = []
+
+        # Return or store the complete features row. -> DISABLED
+        # return bar_features
+
         list_bars.append(features)
 
     def _apply_tick_rule(self, price: float) -> int:
@@ -421,82 +527,3 @@ class MicrostructuralFeaturesGenerator:
         except ValueError:
             print('csv file, column 0, not a date time format:',
                   test_batch.iloc[0, 0])
-
-
-
-'''class MicrostructuralFeaturesGeneratorParallelBatched:
-    """
-    This class integrates batch loading/formatting of tick data with parallel feature extraction.
-    It uses TickDataFormatter to read the CSV in chunks, accumulates rows until a bar boundary is reached,
-    and then processes each bar concurrently to compute intra-bar features.
-    """
-    def __init__(self, file_path, data_source, tick_num_series, batch_size=10000, volume_encoding=None, pct_encoding=None):
-        """
-        :param file_path: Path to the raw tick CSV file.
-        :param data_source: Identifier for the data source (e.g., 'binance') that determines column mapping.
-        :param tick_num_series: A pandas Series containing the tick boundaries where a bar is formed (absolute tick counts).
-        :param batch_size: Number of rows to read per batch (adjust based on available memory).
-        :param volume_encoding: Optional encoding dictionary for volume (for additional feature computation).
-        :param pct_encoding: Optional encoding dictionary for log returns.
-        """
-        self.file_path = file_path
-        self.data_source = data_source
-        # Convert tick boundaries to a list for easier sequential processing.
-        self.tick_boundaries = list(tick_num_series)
-        self.batch_size = batch_size
-        self.volume_encoding = volume_encoding
-        self.pct_encoding = pct_encoding
-        # Initialize the TickDataFormatter using the given data source.
-        self.formatter = TickDataFormatter(data_source=data_source)
-        
-    def get_features_parallel(self):
-        """
-        Reads the tick data in batches, accumulates rows until bar boundaries (tick counts) are met,
-        splits the accumulated data into individual bars, and computes features for each bar in parallel.
-        
-        :return: A pandas DataFrame with computed intra-bar features.
-        """
-        # List to store each complete bar as a DataFrame.
-        bar_list = []
-        # Accumulator to hold rows across batches.
-        accumulator = pd.DataFrame(columns=['date_time', 'price', 'volume'])
-        
-        # Create a generator that yields formatted DataFrame batches.
-        batch_generator = self.formatter.load_and_format_dataframe_in_batches(self.file_path, self.batch_size)
-        
-        # Process each batch.
-        for batch in batch_generator:
-            # Reset index for consistent concatenation.
-            batch = batch.reset_index(drop=True)
-            # Append the new batch to the accumulator.
-            accumulator = pd.concat([accumulator, batch], ignore_index=True)
-            
-            # While the accumulator contains enough rows for the next bar:
-            while self.tick_boundaries and len(accumulator) >= self.tick_boundaries[0]:
-                # The first tick boundary specifies the number of ticks in the bar.
-                boundary = self.tick_boundaries.pop(0)
-                # Extract the bar: the first 'boundary' rows from the accumulator.
-                bar_df = accumulator.iloc[:boundary].copy()
-                bar_list.append(bar_df)
-                # Remove the processed rows from the accumulator.
-                accumulator = accumulator.iloc[boundary:].reset_index(drop=True)
-        
-        # Optionally, process any leftover rows as a final (partial) bar.
-        if not accumulator.empty:
-            bar_list.append(accumulator)
-        
-        # Now, process each bar in parallel using ProcessPoolExecutor.
-        features_list = []
-        with ProcessPoolExecutor() as executor:
-            # Submit each bar for feature computation.
-            futures = {executor.submit(compute_features_for_bar, bar, self.volume_encoding, self.pct_encoding): bar for bar in bar_list}
-            for future in as_completed(futures):
-                try:
-                    result = future.result()
-                    features_list.append(result)
-                except Exception as e:
-                    print(f"Error processing a bar: {e}")
-        
-        # Convert the list of feature dictionaries to a DataFrame.
-        features_df = pd.DataFrame(features_list)
-        return features_df'''

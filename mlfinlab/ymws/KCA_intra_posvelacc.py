@@ -1,8 +1,9 @@
 import numpy as np
-from KCA_composite import fitKCA  # assuming your composite script is named KCA_composite.py
+from mlfinlab.ymws.KCA_optimal_v2 import fitKCA_optimized as fitKCA
+
 import matplotlib.pyplot as plt
 
-def generate_intrabar_features(price_series, q, forecast_steps=0):
+def generate_intra_kcapva(price_series, q, forecast_steps=0):
     """
     Generate intrabar features using KCA with optional forecasting.
     
@@ -21,7 +22,7 @@ def generate_intrabar_features(price_series, q, forecast_steps=0):
     t = np.arange(len(price_series))
     
     # Run KCA; if forecast_steps > 0, the last forecasted state(s) will be appended.
-    x_mean, x_std, _ = fitKCA(t, price_series, q, fwd=forecast_steps)
+    x_mean, x_std, _ = fitKCA(t, price_series, q, fwd=forecast_steps, truncate_past=False)    
     
     # Compute t-values as the ratio of the state estimate to its standard deviation.
     # A small epsilon is added to the denominator to avoid division by zero.
@@ -58,7 +59,7 @@ if __name__ == "__main__":
     # Number of forecast steps (set to zero if you don't need forecasts)
     forecast_steps = 30  
     
-    features = generate_intrabar_features(price_sim, q_value, forecast_steps)
+    features = generate_intra_kcapva(price_sim, q_value, forecast_steps)
     
     # For demonstration, plot the position estimates and the corresponding t-values.
     plt.figure(figsize=(12, 6))
