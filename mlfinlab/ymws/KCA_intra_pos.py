@@ -3,12 +3,12 @@ from mlfinlab.ymws.KCA_optimal_v2 import fitKCA_optimized as fitKCA
 
 import matplotlib.pyplot as plt
 
-def generate_intra_kcapva(price_series, q, forecast_steps=0):
+def generate_intra_kcapos(signed_tick_array, q, forecast_steps=0):
     """
     Generate intrabar features using KCA with optional forecasting.
     
     Inputs:
-      price_series  : 1D numpy array of intrabar prices (e.g., minute bars)
+      signed_tick_array  : 1D numpy array of intrabar prices (e.g., minute bars)
       q             : Scalar to seed the process noise covariance in KCA.
       forecast_steps: Number of steps to forecast ahead (default=0; no forecasting)
     
@@ -19,28 +19,28 @@ def generate_intra_kcapva(price_series, q, forecast_steps=0):
           - 'position_t', 'velocity_t', 'acceleration_t': the t-values (state estimate divided by std).
     """
     # Create a time vector corresponding to the intrabar data.
-    t = np.arange(len(price_series))
+    t = np.arange(len(signed_tick_array))
     
     # Run KCA; if forecast_steps > 0, the last forecasted state(s) will be appended.
-    x_mean, x_std, _ = fitKCA(t, price_series, q, fwd=forecast_steps, truncate_past=False)    
+    x_mean, x_std, _ = fitKCA(t, signed_tick_array, q, fwd=forecast_steps, truncate_past=False)    
     
     # Compute t-values as the ratio of the state estimate to its standard deviation.
     # A small epsilon is added to the denominator to avoid division by zero.
     epsilon = 1e-8
-    position_t     = x_mean[:, 0] / (x_std[:, 0] + epsilon)
-    velocity_t     = x_mean[:, 1] / (x_std[:, 1] + epsilon)
-    acceleration_t = x_mean[:, 2] / (x_std[:, 2] + epsilon)
+    # position_t     = x_mean[:, 0] / (x_std[:, 0] + epsilon)
+    # velocity_t     = x_mean[:, 1] / (x_std[:, 1] + epsilon)
+    # acceleration_t = x_mean[:, 2] / (x_std[:, 2] + epsilon)
     
     features = {
         'position': x_mean[:, 0],
-        'velocity': x_mean[:, 1],
-        'acceleration': x_mean[:, 2],
-        'position_std': x_std[:, 0],
-        'velocity_std': x_std[:, 1],
-        'acceleration_std': x_std[:, 2],
-        'position_t': position_t,
-        'velocity_t': velocity_t,
-        'acceleration_t': acceleration_t,
+        # 'velocity': x_mean[:, 1],
+        # 'acceleration': x_mean[:, 2],
+        # 'position_std': x_std[:, 0],
+        # 'velocity_std': x_std[:, 1],
+        # 'acceleration_std': x_std[:, 2],
+        # 'position_t': position_t,
+        # 'velocity_t': velocity_t,
+        # 'acceleration_t': acceleration_t,
     }
     return features
 
@@ -59,7 +59,7 @@ if __name__ == "__main__":
     # Number of forecast steps (set to zero if you don't need forecasts)
     forecast_steps = 30  
     
-    features = generate_intra_kcapva(price_sim, q_value, forecast_steps)
+    features = generate_intra_kcapos(price_sim, q_value, forecast_steps)
     
     # For demonstration, plot the position estimates and the corresponding t-values.
     plt.figure(figsize=(12, 6))

@@ -7,7 +7,7 @@ from itertools import chain
 
 from mlfinlab.ymws.tick_data_formatter import TickDataFormatter
 # from mlfinlab.ymws.KCA_raw import fitKCA
-from mlfinlab.ymws.KCA_intra_posvelacc import generate_intra_kcapva
+from mlfinlab.ymws.KCA_intra_pos import generate_intra_kcapos
 
 from mlfinlab.microstructural_features.entropy import get_shannon_entropy, get_plug_in_entropy, get_lempel_ziv_entropy_fast#, \
     #get_konto_entropy_nb
@@ -57,7 +57,8 @@ class MicrostructuralFeaturesGenerator:
                  volume_encoding: dict = None, pct_encoding: dict = None, data_source="binance", roll_window=1000,
                  # New parameters for intra–bar features:
                  intra_kca_fwd: list = None,     # list of forecast horizons for intra features
-                 intra_kca_q: float = 0.001   # process noise parameter for KCA
+                 intra_kca_q: float = 0.001,   # process noise parameter for KCA
+                 parallel_intra: bool = False, 
                  ):
         """
         Constructor
@@ -71,7 +72,8 @@ class MicrostructuralFeaturesGenerator:
         :param data_source: (str) Identifier for the data source. (o3-mini-high)
         :param intra_kca_fwd: List of forecast horizon(s) for intra-bar features.
                           For example: [1, 10, 100, 250, 1000]. Defaults to [0] if not provided.
-        :param intra_kca_q: Scalar to seed process noise for intra-KCA.        
+        :param intra_kca_q: Scalar to seed process noise for intra-KCA.   
+        :param parallel_intra: “sync” mode for deployment, and add a new “parallel” mode just for development runs     
         """
         self.tick_num_series = tick_num_series
         self.batch_size = int(batch_size)
@@ -79,6 +81,7 @@ class MicrostructuralFeaturesGenerator:
         self.pct_encoding = pct_encoding
         self.data_source = data_source
         self.roll_window = roll_window  # Expose the roll window size as a parameter
+        self.parallel_intra = parallel_intra
 
         # Initialize the formatter.
         self.formatter = TickDataFormatter(data_source=self.data_source)
@@ -139,7 +142,7 @@ class MicrostructuralFeaturesGenerator:
     def _get_intra_kcafeatures(self, tick_series):
         """
         Compute intra–bar KCA features from the tick series (signed ticks)
-        using generate_intra_kcapva from KCA_intra_posvelacc.py.
+        using generate_intra_kcapos from KCA_intra_posvelacc.py.
         
         Handles multiple values of the process noise parameter (q) by looping over each
         value in self.intra_kca_q and each forecast horizon in self.intra_kca_fwd.
@@ -152,22 +155,24 @@ class MicrostructuralFeaturesGenerator:
             result = {}
             for q_val in self.intra_kca_q:
                 for f in self.intra_kca_fwd:
-                    for key in ['position', 'velocity', 'acceleration', 
-                                'position_std', 'velocity_std', 'acceleration_std',
-                                'position_t', 'velocity_t', 'acceleration_t']:
+                    for key in ['position',]:
+                    # for key in ['position', 'velocity', 'acceleration', 
+                    #             'position_std', 'velocity_std', 'acceleration_std',
+                    #             'position_t', 'velocity_t', 'acceleration_t']:
                         result[f"intra_kca_{key}_fwd_{f}_q_{q_val}"] = np.nan
             return result
         
-        price_series = np.array(tick_series, dtype=float)
-        n = len(price_series)
+        signed_tick_array = np.array(tick_series, dtype=float)
+        n = len(signed_tick_array)
         # --- GUARD AGAINST TOO‐SHORT SERIES (avoids EM division by zero) ---
         if n <= 1:
             result = {}
             for q_val in self.intra_kca_q:
                 for f in self.intra_kca_fwd:
-                    for key in ['position', 'velocity', 'acceleration',
-                                'position_std', 'velocity_std', 'acceleration_std',
-                                'position_t', 'velocity_t', 'acceleration_t']:
+                    for key in ['position',]:
+                    # for key in ['position', 'velocity', 'acceleration',
+                    #             'position_std', 'velocity_std', 'acceleration_std',
+                    #             'position_t', 'velocity_t', 'acceleration_t']:
                         result[f"intra_kca_{key}_fwd_{f}_q_{q_val}"] = np.nan
             return result
         # --- END GUARD ---
@@ -179,8 +184,8 @@ class MicrostructuralFeaturesGenerator:
             forecast_list = [f for f in self.intra_kca_fwd if f > 0]
             call_fwd = max(forecast_list) if forecast_list else 0
 
-            # Call generate_intra_kcapva with the current q_val.
-            features = generate_intra_kcapva(price_series, q_val, forecast_steps=call_fwd)
+            # Call generate_intra_kcapos with the current q_val.
+            features = generate_intra_kcapos(signed_tick_array, q_val, forecast_steps=call_fwd)
             
             for f in self.intra_kca_fwd:
                 if f == 0:
@@ -188,14 +193,14 @@ class MicrostructuralFeaturesGenerator:
                 else:
                     idx = n + f - 1
                 result[f"intra_kca_position_fwd_{f}_q_{q_val}"] = features['position'][idx]
-                result[f"intra_kca_velocity_fwd_{f}_q_{q_val}"] = features['velocity'][idx]
-                result[f"intra_kca_acceleration_fwd_{f}_q_{q_val}"] = features['acceleration'][idx]
-                result[f"intra_kca_position_std_fwd_{f}_q_{q_val}"] = features['position_std'][idx]
-                result[f"intra_kca_velocity_std_fwd_{f}_q_{q_val}"] = features['velocity_std'][idx]
-                result[f"intra_kca_acceleration_std_fwd_{f}_q_{q_val}"] = features['acceleration_std'][idx]
-                result[f"intra_kca_position_t_fwd_{f}_q_{q_val}"] = features['position_t'][idx]
-                result[f"intra_kca_velocity_t_fwd_{f}_q_{q_val}"] = features['velocity_t'][idx]
-                result[f"intra_kca_acceleration_t_fwd_{f}_q_{q_val}"] = features['acceleration_t'][idx]
+                # result[f"intra_kca_velocity_fwd_{f}_q_{q_val}"] = features['velocity'][idx]
+                # result[f"intra_kca_acceleration_fwd_{f}_q_{q_val}"] = features['acceleration'][idx]
+                # result[f"intra_kca_position_std_fwd_{f}_q_{q_val}"] = features['position_std'][idx]
+                # result[f"intra_kca_velocity_std_fwd_{f}_q_{q_val}"] = features['velocity_std'][idx]
+                # result[f"intra_kca_acceleration_std_fwd_{f}_q_{q_val}"] = features['acceleration_std'][idx]
+                # result[f"intra_kca_position_t_fwd_{f}_q_{q_val}"] = features['position_t'][idx]
+                # result[f"intra_kca_velocity_t_fwd_{f}_q_{q_val}"] = features['velocity_t'][idx]
+                # result[f"intra_kca_acceleration_t_fwd_{f}_q_{q_val}"] = features['acceleration_t'][idx]
         return result
 
 
@@ -244,10 +249,13 @@ class MicrostructuralFeaturesGenerator:
 
       # --- NEW: Extend columns for intra–KCA features ---
         intra_keys = [
-            'position','velocity','acceleration',
-            'position_std','velocity_std','acceleration_std',
-            'position_t','velocity_t','acceleration_t'
+            'position',
         ]
+        # intra_keys = [
+        #     'position','velocity','acceleration',
+        #     'position_std','velocity_std','acceleration_std',
+        #     'position_t','velocity_t','acceleration_t'
+        # ]
         for q_val in self.intra_kca_q:
             for f in self.intra_kca_fwd:
                 for key in intra_keys:
