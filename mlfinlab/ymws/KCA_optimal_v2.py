@@ -29,7 +29,8 @@ def forecast_loop(x0, P0, A, Q, fwd):
 
 # -----------------------------------------------------------------------------
 # Optimized KCA implementation with pre-allocation and manual forecast loop.
-def fitKCA_optimized(t, z, q, fwd=0, truncate_past=True):
+def fitKCA_optimized(t, z, q, fwd=0, truncate_past=True, em_iter=5):
+
     """
     Optimized implementation of Kinetic Component Analysis (KCA).
 
@@ -64,8 +65,9 @@ def fitKCA_optimized(t, z, q, fwd=0, truncate_past=True):
                       transition_covariance=Q,
                       observation_matrices=H)
     
-    # Optionally run a few EM iterations to estimate noise covariances.
-    kf = kf.em(z, n_iter=5)
+    # ‑‑> honour caller’s choice (0 ⇒ skip EM completely)
+    if em_iter:
+        kf = kf.em(z, n_iter=em_iter)    
     
     # Run smoothing to get estimates of the latent states from the noisy data.
     x_mean, x_cov = kf.smooth(z)
@@ -112,7 +114,7 @@ def fitKCA_optimized(t, z, q, fwd=0, truncate_past=True):
 
 # -----------------------------------------------------------------------------
 # Function to process multiple time series in parallel using Joblib.
-def fitKCA_parallel(t_list, z_list, q, fwd=0, n_jobs=-1, truncate_past=True):
+def fitKCA_parallel(t_list, z_list, q, fwd=0, n_jobs=-1, truncate_past=True, em_iter=5):
     """
     Run fitKCA_optimized on multiple time series in parallel.
     

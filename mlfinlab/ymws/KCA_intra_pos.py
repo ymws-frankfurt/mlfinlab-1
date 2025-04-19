@@ -3,7 +3,7 @@ from mlfinlab.ymws.KCA_optimal_v2 import fitKCA_optimized as fitKCA
 
 import matplotlib.pyplot as plt
 
-def generate_intra_kcapos(signed_tick_array, q, forecast_steps=0):
+def generate_intra_kcapos(signed_tick_array, q, forecast_steps=0, em_iter=5):    
     """
     Generate intrabar features using KCA with optional forecasting.
     
@@ -22,8 +22,13 @@ def generate_intra_kcapos(signed_tick_array, q, forecast_steps=0):
     t = np.arange(len(signed_tick_array))
     
     # Run KCA; if forecast_steps > 0, the last forecasted state(s) will be appended.
-    x_mean, x_std, _ = fitKCA(t, signed_tick_array, q, fwd=forecast_steps, truncate_past=False)    
-    
+    x_mean, x_std, _ = fitKCA(
+        t, signed_tick_array, q,
+        fwd=forecast_steps,
+        truncate_past=False,
+        em_iter=em_iter
+    )    
+
     # Compute t-values as the ratio of the state estimate to its standard deviation.
     # A small epsilon is added to the denominator to avoid division by zero.
     epsilon = 1e-8

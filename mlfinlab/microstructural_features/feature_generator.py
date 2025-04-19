@@ -28,6 +28,8 @@ from mlfinlab.structural_breaks.cusum import get_chu_stinchcombe_white_statistic
 from mlfinlab.structural_breaks.sadf import get_sadf
 
 from mlfinlab.util.misc import crop_data_frame_in_batches
+from joblib import Parallel, delayed
+
 
 # from concurrent.futures import ProcessPoolExecutor, as_completed
 # Import the compute_features_for_bar function from your parallel_feature_extraction.py module
@@ -35,6 +37,19 @@ from mlfinlab.util.misc import crop_data_frame_in_batches
 
 
 # pylint: disable=too-many-instance-attributes
+
+def _kca_worker(tick_arr, q_val, call_fwd, em_iter):
+    """
+    Stand‑alone helper so joblib doesn't have to pickle MicrostructuralFeaturesGenerator.
+    """
+    from mlfinlab.ymws.KCA_intra_pos import generate_intra_kcapos
+    feats = generate_intra_kcapos(
+        tick_arr,
+        q_val,
+        forecast_steps=call_fwd,
+        em_iter=em_iter,
+    )
+    return q_val, feats          # return q so we can build keys later
 
 
 class MicrostructuralFeaturesGenerator:
@@ -59,6 +74,7 @@ class MicrostructuralFeaturesGenerator:
                  intra_kca_fwd: list = None,     # list of forecast horizons for intra features
                  intra_kca_q: float = 0.001,   # process noise parameter for KCA
                  parallel_intra: bool = False, 
+                 em_iter=5,
                  ):
         """
         Constructor
@@ -74,6 +90,10 @@ class MicrostructuralFeaturesGenerator:
                           For example: [1, 10, 100, 250, 1000]. Defaults to [0] if not provided.
         :param intra_kca_q: Scalar to seed process noise for intra-KCA.   
         :param parallel_intra: “sync” mode for deployment, and add a new “parallel” mode just for development runs     
+            • False  → the current, serial behaviour (production default)  
+            • True   → parallel mode, use all logical CPU cores  
+            • "n=X"  → parallel mode with X workers (e.g. "n=4")
+        :param em_iter
         """
         self.tick_num_series = tick_num_series
         self.batch_size = int(batch_size)
@@ -82,6 +102,7 @@ class MicrostructuralFeaturesGenerator:
         self.data_source = data_source
         self.roll_window = roll_window  # Expose the roll window size as a parameter
         self.parallel_intra = parallel_intra
+        self.em_iter = em_iter
 
         # Initialize the formatter.
         self.formatter = TickDataFormatter(data_source=self.data_source)
@@ -138,6 +159,14 @@ class MicrostructuralFeaturesGenerator:
         else:
             self.intra_kca_q = intra_kca_q
 
+        if isinstance(parallel_intra, str) and parallel_intra.lower().startswith("n="):
+            self.parallel_intra = int(parallel_intra.split("=", 1)[1])
+        elif parallel_intra is True:
+            # ­‑1 means “all cores” in joblib
+            self.parallel_intra = -1
+        else:          # False or anything else you may pass in prod
+            self.parallel_intra = 0
+
     # --------------------------------------------------------------------------
     def _get_intra_kcafeatures(self, tick_series):
         """
@@ -150,33 +179,63 @@ class MicrostructuralFeaturesGenerator:
         :return: Dictionary of intra features with keys such as 
                  'intra_kca_position_fwd_{f}_q_{q}', etc.
         """
-        import numpy as np
-        if len(tick_series) == 0:
-            result = {}
-            for q_val in self.intra_kca_q:
+        # -- Guards (identical to your current version) --------------------------
+        if len(tick_series) <= 1:
+            res = {}
+            for q in self.intra_kca_q:
                 for f in self.intra_kca_fwd:
-                    for key in ['position',]:
-                    # for key in ['position', 'velocity', 'acceleration', 
-                    #             'position_std', 'velocity_std', 'acceleration_std',
-                    #             'position_t', 'velocity_t', 'acceleration_t']:
-                        result[f"intra_kca_{key}_fwd_{f}_q_{q_val}"] = np.nan
-            return result
+                    res[f"intra_kca_position_fwd_{f}_q_{q}"] = np.nan
+            return res
+
+        signed_tick_array = np.asarray(tick_series, dtype=float)
+        n = signed_tick_array.size
+        call_fwd = max([f for f in self.intra_kca_fwd if f > 0], default=0)
+
+        # -- Helper that runs one KCA call --------------------------------------
+        # def _run_for_q(q_val):
+        #     feats = generate_intra_kcapos(signed_tick_array, 
+        #                                   q_val, 
+        #                                   forecast_steps=call_fwd,
+        #                                   em_iter=self.em_iter
+        #                                   )
+        #     out = {}
+        #     for f in self.intra_kca_fwd:
+        #         idx = n - 1 if f == 0 else n + f - 1
+        #         out[f"intra_kca_position_fwd_{f}_q_{q_val}"] = feats["position"][idx]
+        #     return out
+
+        # # -- Serial vs parallel branch ------------------------------------------
+        # if self.parallel_intra:                 # 0 ⟹ serial, any other int ⟹ #workers
+        #     per_q_dicts = Parallel(n_jobs=self.parallel_intra)(
+        #         delayed(_run_for_q)(q) for q in self.intra_kca_q
+        #     )
+        #     # merge the individual dicts
+        #     result = {k: v for d in per_q_dicts for k, v in d.items()}
+
+        def _build_row(q_val, feats):
+            out = {}
+            for f in self.intra_kca_fwd:
+                idx = n - 1 if f == 0 else n + f - 1
+                out[f"intra_kca_position_fwd_{f}_q_{q_val}"] = feats["position"][idx]
+            return out
+
+        if self.parallel_intra:
+            fetched = Parallel(n_jobs=self.parallel_intra)(
+                delayed(_kca_worker)(
+                    signed_tick_array, q, call_fwd, self.em_iter
+                ) for q in self.intra_kca_q
+            )
+            result = {}
+            for q_val, feats in fetched:
+                result.update(_build_row(q_val, feats))
+
+        else:
+            result = {}
+            for q in self.intra_kca_q:
+                _, feats = _kca_worker(signed_tick_array, q, call_fwd, self.em_iter)
+                result.update(_build_row(q, feats))                
+        return result
         
-        signed_tick_array = np.array(tick_series, dtype=float)
-        n = len(signed_tick_array)
-        # --- GUARD AGAINST TOO‐SHORT SERIES (avoids EM division by zero) ---
-        if n <= 1:
-            result = {}
-            for q_val in self.intra_kca_q:
-                for f in self.intra_kca_fwd:
-                    for key in ['position',]:
-                    # for key in ['position', 'velocity', 'acceleration',
-                    #             'position_std', 'velocity_std', 'acceleration_std',
-                    #             'position_t', 'velocity_t', 'acceleration_t']:
-                        result[f"intra_kca_{key}_fwd_{f}_q_{q_val}"] = np.nan
-            return result
-        # --- END GUARD ---
-        result = {}
         
         # For each process noise parameter and forecast horizon, call KCA.
         for q_val in self.intra_kca_q:
