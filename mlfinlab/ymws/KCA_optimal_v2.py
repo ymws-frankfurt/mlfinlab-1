@@ -148,7 +148,7 @@ if __name__ == '__main__':
     fwd_steps = 20  # Forecast 20 steps ahead
     
     # Run the optimized KCA on the sample series.
-    x_mean_forecast, x_std_forecast, x_cov_forecast = fitKCA_optimized(t, z, q, fwd=fwd_steps, truncate_past=True)
+    x_mean_forecast, x_std_forecast, x_cov_forecast = fitKCA_optimized(t, z, q, fwd=fwd_steps, truncate_past=True, em_iter=2)
     
     # Construct a time vector for the forecasted series.
     dt = (t[-1] - t[0]) / n_obs

@@ -12,11 +12,16 @@ class TickDataFormatter:
         Initialize the formatter.
         
         :param data_source: Identifier for the data source (e.g. 'binance', 'oanda').
-        :param preserve_aggressor: If True and data_source is 'binance', include the 'isBuyerMaker' column. -> default True (ymws)
+        :param preserve_aggressor: If True and data_source is 'binance', include the 'isBuyerMaker' column.
+          -> default True (ymws) BUT NOT INCORPORATED INTO basisbarbuild.py
+          
         :param column_mappings: Optional dict mapping original column names to standard names.
         :param column_positions: Optional dict mapping column positions to standard names for headerless files.
         """
         self.data_source = data_source
+        if self.data_source == "gmocoin": # original format is “YYYY‑MM‑DD hh:mm:ss.sss” JST 
+            self.data_source['date_time'] = (pd.to_datetime(self.data_source['date_time'], 
+                                                            utc=False) .dt.tz_localize('Asia/Tokyo') .dt.tz_convert('UTC') .view('int64') // 10**6)
         self.preserve_aggressor = preserve_aggressor
         
         if data_source == "binance":
@@ -34,6 +39,9 @@ class TickDataFormatter:
                 self.column_positions = column_positions or {
                     "binance": {4: "date_time", 1: "price", 2: "volume"}
                 }
+        elif self.data_source == "gmocoin": 
+            df = df[['date_time','price','volume','side']]            
+            
         elif data_source == "oanda": # oanda essentially belongs to else case for now but could be changed in the future (ymws)
             self.column_mappings = column_mappings or {
                 "oanda": {"time": "date_time", "ask": "price", "size": "volume"}

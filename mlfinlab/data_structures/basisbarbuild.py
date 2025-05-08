@@ -20,6 +20,7 @@ class BasisBarBuild():
     COLUMN_MAPPINGS = {
         "binance": {"timestamp": "date_time", "trade_price": "price", "trade_volume": "volume", "isBuyerMaker":"isBuyerMaker"},
         "oanda": {"time": "date_time", "ask": "price", "size": "volume"},
+        "gmocoin": {"timestamp": "date_time", "price": "price", "size": "volume", "side":"side"},
     }
 
     # For CSV files without headers (i.e. columns are positional)
@@ -27,6 +28,8 @@ class BasisBarBuild():
         "binance": {4: "date_time", 1: "price", 2: "volume", 5: "isBuyerMaker"},  # Map position-based indexing
         "binancefake": {4: "date_time", 1: "price", 2: "volume"},  # Map position-based indexing
         "oanda": {4: "date_time", 1: "price", 2: "volume"},  # Map position-based indexing
+        "gmocoin": {5: "date_time", 4: "price", 3: "volume", 2: "side"},  # Map position-based indexing
+        "gmocoinfake": {5: "date_time", 4: "price", 3: "volume"},  # Map position-based indexing
     }
 
     BAR_TYPE = {
