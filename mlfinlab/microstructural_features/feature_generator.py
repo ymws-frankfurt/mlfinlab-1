@@ -69,7 +69,10 @@ class MicrostructuralFeaturesGenerator:
     """
 
     def __init__(self, trades_input: (str, list, pd.DataFrame), tick_num_series: pd.Series, batch_size: int = 2e7,
-                 volume_encoding: dict = None, pct_encoding: dict = None, data_source="binance", roll_window=1000,
+                 volume_encoding: dict = None, pct_encoding: dict = None, 
+                 data_source: str = None, 
+                 preserve_aggressor: bool = True,
+                 roll_window=1000,
                  # New parameters for intra–bar features:
                  intra_kca_fwd: list = None,     # list of forecast horizons for intra features
                  intra_kca_q: float = 0.001,   # process noise parameter for KCA
@@ -100,12 +103,16 @@ class MicrostructuralFeaturesGenerator:
         self.volume_encoding = volume_encoding
         self.pct_encoding = pct_encoding
         self.data_source = data_source
+        self.preserve_aggressor = preserve_aggressor
         self.roll_window = roll_window  # Expose the roll window size as a parameter
         self.parallel_intra = parallel_intra
         self.em_iter = em_iter
 
         # Initialize the formatter.
-        self.formatter = TickDataFormatter(data_source=self.data_source)
+        self.formatter = TickDataFormatter(
+            data_source=self.data_source,
+            preserve_aggressor=self.preserve_aggressor,   # keep in sync
+            )
 
         # Accept trades_input as a single file path, list of file paths, or a DataFrame.
         if isinstance(trades_input, str):
@@ -395,18 +402,22 @@ class MicrostructuralFeaturesGenerator:
             # Append current tick price to the cum_prices cache (NEW)
             self.cum_prices.append(price)
 
-            # If using binance data and the isBuyerMaker flag is provided (4th column), override the tick rule.
-            if self.data_source == "binance" and len(row) > 3:
-                isBuyerMaker = row[3]
-                # Convert string representations to boolean if needed.
-                if isinstance(isBuyerMaker, str):
-                    isBuyerMaker = isBuyerMaker.lower() == 'true'
-                # Determine trade direction: True => seller-initiated (-1), False => buyer-initiated (+1)
-                signed_tick = -1 if isBuyerMaker else 1
+            # # If using binance data and the isBuyerMaker flag is provided (4th column), override the tick rule.
+            # if self.data_source == "binance" and len(row) > 3:
+            #     isBuyerMaker = row[3]
+            #     # Convert string representations to boolean if needed.
+            #     if isinstance(isBuyerMaker, str):
+            #         isBuyerMaker = isBuyerMaker.lower() == 'true'
+            #     # Determine trade direction: True => seller-initiated (-1), False => buyer-initiated (+1)
+            #     signed_tick = -1 if isBuyerMaker else 1
+            # else:
+            #     signed_tick = self._apply_tick_rule(price)
+
+            if len(row) > 3 and not np.isnan(row[3]):
+                signed_tick = int(row[3])
             else:
                 signed_tick = self._apply_tick_rule(price)
 
-            # signed_tick = self._apply_tick_rule(price)
 
             self.tick_num += 1
 
@@ -578,14 +589,14 @@ class MicrostructuralFeaturesGenerator:
     def _assert_csv(test_batch):
         """
         Tests that the csv file read has the format: date_time, price, and volume.
-        or date_time, price, volume, isBuyerMaker (for binance data).
+        or date_time, price, volume, signed_tick.
         If not then the user needs to create such a file. This format is in place to remove any unwanted overhead.
 
         :param test_batch: (pd.DataFrame) the first row of the dataset.
         :return: (None)
         """
         # assert test_batch.shape[1] == 3, 'Must have only 3 columns in csv: date_time, price, & volume.'
-        assert test_batch.shape[1] in (3, 4), 'CSV must have 3 columns (date_time, price, volume) or 4 columns (with isBuyerMaker for binance).'
+        assert test_batch.shape[1] in (3, 4), 'CSV must have 3 columns (date_time, price, volume) or 4 columns (with signed_tick).'
         assert isinstance(test_batch.iloc[0, 1], float), 'price column in csv not float.'
         assert not isinstance(test_batch.iloc[0, 2], str), 'volume column in csv not int or float.'
 

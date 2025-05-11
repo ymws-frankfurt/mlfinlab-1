@@ -5,54 +5,27 @@ import functools
 from typing import Union, Iterable
 from pathlib import Path
 from datetime import datetime
-# from mlfinlab import data_structures
-# from mlfinlab.data_structures.standard_data_structures import StandardBars
-#from mlfinlab.data_structures.bar_generators import get_tick_bars_appending, get_volume_bars_appending, get_dollar_bars_appending, get_time_bars_appending
 #from icecream import ic
 from mlfinlab.ymws.tick_data_formatter import TickDataFormatter
 
 
 class BasisBarBuild():
-    """
-    Build bar data from CSV files using only the necessary columns.
-    """
-    # You can retain the default mappings as class attributes if desired.
-    COLUMN_MAPPINGS = {
-        "binance": {"timestamp": "date_time", "trade_price": "price", "trade_volume": "volume", "isBuyerMaker":"isBuyerMaker"},
-        "oanda": {"time": "date_time", "ask": "price", "size": "volume"},
-        "gmocoin": {"timestamp": "date_time", "price": "price", "size": "volume", "side":"side"},
-    }
+    """Orchestrates raw‑tick ➜ bar ➜ CSV pipeline."""
 
-    # For CSV files without headers (i.e. columns are positional)
-    COLUMN_POSITIONS = {
-        "binance": {4: "date_time", 1: "price", 2: "volume", 5: "isBuyerMaker"},  # Map position-based indexing
-        "binancefake": {4: "date_time", 1: "price", 2: "volume"},  # Map position-based indexing
-        "oanda": {4: "date_time", 1: "price", 2: "volume"},  # Map position-based indexing
-        "gmocoin": {5: "date_time", 4: "price", 3: "volume", 2: "side"},  # Map position-based indexing
-        "gmocoinfake": {5: "date_time", 4: "price", 3: "volume"},  # Map position-based indexing
-    }
-
-    BAR_TYPE = {
-        "time": "FHB",
-        "standard": {"tick": "TB", "volume": "VB", "dollar": "DB"},
-        "imbalance": {"tick": "TIB", "volume": "VIB", "dollar": "DIB"},
-        "runs": {"tick": "TRB", "volume": "VRB", "dollar": "DRB"},
-        "entropy": {"tick": "TEB", "volume": "VEB", "dollar": "DEB"},
-    }
-
-    def __init__(self, inputfilepath, period_start, period_end, batch_size, data_source="binance"):
+    def __init__(self, inputfilepath, period_start, period_end, batch_size,
+                  data_source, preserve_aggressor=True):
         self.inputfilepath = inputfilepath
         self.period_start = period_start
         self.period_end = period_end
         self.batch_size = batch_size
-        self.data_source = data_source        
+        self.data_source = data_source
+        self.preserve_aggressor = preserve_aggressor        
         self.file_list = None
         # Create an instance of the formatter for the chosen data source.
         self.formatter = TickDataFormatter(
             data_source=self.data_source,
-            column_mappings=BasisBarBuild.COLUMN_MAPPINGS,
-            column_positions=BasisBarBuild.COLUMN_POSITIONS
-        )
+            preserve_aggressor=self.preserve_aggressor,
+            )
 
     def load_and_format_dataframe(self, file_path: str):
         """
@@ -133,13 +106,14 @@ class BasisBarBuild():
             print(f"An error occurred: {e}")
 
 
-    def build_bars(self, bar_func, output_path, data_source="binance", **kwargs):
+    def build_bars(self, bar_func, output_path, **kwargs):
         """
         Generic method to build bars using a specified bar function.
         -> Use the data_source parameter here instead of hardcoding "binance"
         """
-        decorated_bar_func = self.format_dataframe(data_source)(bar_func)
-        self.readfile_list()
+        decorated_bar_func = self.format_dataframe(self.data_source)(bar_func)
+        # self.readfile_list()
+        self.readfile_list(self.period_start, self.period_end)
         if not self.file_list:
             print("No CSV files found.")
             return
@@ -156,79 +130,80 @@ class BasisBarBuild():
             )
 
     # Specific methods for each bar type:
-    def build_dollar_bars(self, output_path, data_source="binance", **kwargs):
+    def build_dollar_bars(self, output_path, **kwargs):
         from mlfinlab.data_structures.bar_generators import get_dollar_bars_appending
-        self.build_bars(get_dollar_bars_appending, output_path, data_source, **kwargs)
+        self.build_bars(get_dollar_bars_appending, output_path, **kwargs)
 
-    def build_volume_bars(self, output_path, data_source="binance", **kwargs):
+    def build_volume_bars(self, output_path, **kwargs):
         from mlfinlab.data_structures.bar_generators import get_volume_bars_appending
-        self.build_bars(get_volume_bars_appending, output_path, data_source, **kwargs)
+        self.build_bars(get_volume_bars_appending, output_path, **kwargs)
 
-    def build_tick_bars(self, output_path, data_source="binance", **kwargs):
+    def build_tick_bars(self, output_path, **kwargs):
         from mlfinlab.data_structures.bar_generators import get_tick_bars_appending
-        self.build_bars(get_tick_bars_appending, output_path, data_source, **kwargs)
+        self.build_bars(get_tick_bars_appending, output_path, **kwargs)
 
 
 
-    def build_ema_tick_imbalance_bars(self, output_path, data_source="binance", **kwargs):
+    def build_ema_tick_imbalance_bars(self, output_path, **kwargs):
         from mlfinlab.data_structures.bar_generators import get_ema_tick_imbalance_bars_appending
-        self.build_bars(get_ema_tick_imbalance_bars_appending, output_path, data_source, **kwargs)
+        self.build_bars(get_ema_tick_imbalance_bars_appending, output_path, **kwargs)
 
-    def build_const_tick_imbalance_bars(self, output_path, data_source="binance", **kwargs):
+    def build_const_tick_imbalance_bars(self, output_path, **kwargs):
         from mlfinlab.data_structures.bar_generators import get_const_tick_imbalance_bars_appending
-        self.build_bars(get_const_tick_imbalance_bars_appending, output_path, data_source, **kwargs)
+        self.build_bars(get_const_tick_imbalance_bars_appending, output_path, **kwargs)
 
-    def build_ema_volume_imbalance_bars(self, output_path, data_source="binance", **kwargs):
+    def build_ema_volume_imbalance_bars(self, output_path, **kwargs):
         from mlfinlab.data_structures.bar_generators import get_ema_volume_imbalance_bars_appending
-        self.build_bars(get_ema_volume_imbalance_bars_appending, output_path, data_source, **kwargs)
+        self.build_bars(get_ema_volume_imbalance_bars_appending, output_path, **kwargs)
 
-    def build_const_volume_imbalance_bars(self, output_path, data_source="binance", **kwargs):
+    def build_const_volume_imbalance_bars(self, output_path, **kwargs):
         from mlfinlab.data_structures.bar_generators import get_const_volume_imbalance_bars_appending
-        self.build_bars(get_const_volume_imbalance_bars_appending, output_path, data_source, **kwargs)
+        self.build_bars(get_const_volume_imbalance_bars_appending, output_path, **kwargs)
 
-    def build_ema_dollar_imbalance_bars(self, output_path, data_source="binance", **kwargs):
+    def build_ema_dollar_imbalance_bars(self, output_path, **kwargs):
         from mlfinlab.data_structures.bar_generators import get_ema_dollar_imbalance_bars_appending
-        self.build_bars(get_ema_dollar_imbalance_bars_appending, output_path, data_source, **kwargs)
+        self.build_bars(get_ema_dollar_imbalance_bars_appending, output_path, **kwargs)
 
-    def build_const_dollar_imbalance_bars(self, output_path, data_source="binance", **kwargs):
+    def build_const_dollar_imbalance_bars(self, output_path, **kwargs):
         from mlfinlab.data_structures.bar_generators import get_const_dollar_imbalance_bars_appending
-        self.build_bars(get_const_dollar_imbalance_bars_appending, output_path, data_source, **kwargs)
+        self.build_bars(get_const_dollar_imbalance_bars_appending, output_path, **kwargs)
 
 
 
-    def build_ema_tick_run_bars(self, output_path, data_source="binance", **kwargs):
+    def build_ema_tick_run_bars(self, output_path, **kwargs):
         from mlfinlab.data_structures.bar_generators import get_ema_tick_run_bars_appending
-        self.build_bars(get_ema_tick_run_bars_appending, output_path, data_source, **kwargs)
+        self.build_bars(get_ema_tick_run_bars_appending, output_path, **kwargs)
 
-    def build_const_tick_run_bars(self, output_path, data_source="binance", **kwargs):
+    def build_const_tick_run_bars(self, output_path, **kwargs):
         from mlfinlab.data_structures.bar_generators import get_const_tick_run_bars_appending
-        self.build_bars(get_const_tick_run_bars_appending, output_path, data_source, **kwargs)
+        self.build_bars(get_const_tick_run_bars_appending, output_path, **kwargs)
 
-    def build_ema_volume_run_bars(self, output_path, data_source="binance", **kwargs):
+    def build_ema_volume_run_bars(self, output_path, **kwargs):
         from mlfinlab.data_structures.bar_generators import get_ema_volume_run_bars_appending
-        self.build_bars(get_ema_volume_run_bars_appending, output_path, data_source, **kwargs)
+        self.build_bars(get_ema_volume_run_bars_appending, output_path, **kwargs)
 
-    def build_const_volume_run_bars(self, output_path, data_source="binance", **kwargs):
+    def build_const_volume_run_bars(self, output_path, **kwargs):
         from mlfinlab.data_structures.bar_generators import get_const_volume_run_bars_appending
-        self.build_bars(get_const_volume_run_bars_appending, output_path, data_source, **kwargs)
+        self.build_bars(get_const_volume_run_bars_appending, output_path, **kwargs)
 
-    def build_ema_dollar_run_bars(self, output_path, data_source="binance", **kwargs):
+    def build_ema_dollar_run_bars(self, output_path, **kwargs):
         from mlfinlab.data_structures.bar_generators import get_ema_dollar_run_bars_appending
-        self.build_bars(get_ema_dollar_run_bars_appending, output_path, data_source, **kwargs)
+        self.build_bars(get_ema_dollar_run_bars_appending, output_path, **kwargs)
 
-    def build_const_dollar_run_bars(self, output_path, data_source="binance", **kwargs):
+    def build_const_dollar_run_bars(self, output_path, **kwargs):
         from mlfinlab.data_structures.bar_generators import get_const_dollar_run_bars_appending
-        self.build_bars(get_const_dollar_run_bars_appending, output_path, data_source, **kwargs)
+        self.build_bars(get_const_dollar_run_bars_appending, output_path, **kwargs)
 
 
 
-    def build_time_bars(self, output_path, data_source="binance", **kwargs):
+    def build_time_bars(self, output_path, **kwargs):
         """
         Builds time bars using the specialized decorator that converts date_time.
         """
         from mlfinlab.data_structures.bar_generators import get_time_bars_appending
-        decorated_bar_func = self.format_dataframe_time(data_source)(get_time_bars_appending)
-        self.readfile_list()
+        decorated_bar_func = self.format_dataframe_time(self.data_source)(get_time_bars_appending)
+        # self.readfile_list()
+        self.readfile_list(self.period_start, self.period_end)
         if not self.file_list:
             print("No CSV files found.")
             return
@@ -271,16 +246,4 @@ def generate_output_filename(inputfilepath, start_period, end_period, data_sourc
     filename += ".csv"
     return filename
 
-
-def bar_pytest():
-    """
-    Intended to conduct a quick test on the csv output validity
-
-    - excel check with tick num
-
-    - time bar: utc regular intervals? -> OK (close price checked too)
-        - also can compare with the distributed ones by Binance
-    - dollar bar: match with binance raw data? -> have not confirmed yet (close price checked already)
-    """
-    return None
 

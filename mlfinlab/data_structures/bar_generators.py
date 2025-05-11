@@ -187,7 +187,7 @@ def get_ema_dollar_imbalance_bars_appending(file_path_or_df: Union[str, Iterable
                                             verbose: bool = True,
                                             to_csv: bool = False,
                                             output_path: Optional[str] = None,
-                                            data_source: str = "binance"):
+                                            data_source: str = None):
     """
     Creates EMA dollar imbalance bars with CSV appending.
     """
@@ -216,7 +216,7 @@ def get_ema_volume_imbalance_bars_appending(file_path_or_df: Union[str, Iterable
                                             verbose: bool = True,
                                             to_csv: bool = False,
                                             output_path: Optional[str] = None,
-                                            data_source: str = "binance"):
+                                            data_source: str = None):
     bars = AppendingEMAImbalanceBars(metric='volume_imbalance',
                                      num_prev_bars=num_prev_bars,
                                      expected_imbalance_window=expected_imbalance_window,
@@ -242,7 +242,7 @@ def get_ema_tick_imbalance_bars_appending(file_path_or_df: Union[str, Iterable[s
                                           verbose: bool = True,
                                           to_csv: bool = False,
                                           output_path: Optional[str] = None,
-                                          data_source: str = "binance"):
+                                          data_source: str = None):
     bars = AppendingEMAImbalanceBars(metric='tick_imbalance',
                                      num_prev_bars=num_prev_bars,
                                      expected_imbalance_window=expected_imbalance_window,
@@ -302,7 +302,7 @@ def get_const_dollar_imbalance_bars_appending(file_path_or_df: Union[str, Iterab
                                               verbose: bool = True,
                                               to_csv: bool = False,
                                               output_path: Optional[str] = None,
-                                              data_source: str = "binance"):
+                                              data_source: str = None):
     bars = AppendingConstImbalanceBars(metric='dollar_imbalance',
                                        expected_imbalance_window=expected_imbalance_window,
                                        exp_num_ticks_init=exp_num_ticks_init,
@@ -324,7 +324,7 @@ def get_const_volume_imbalance_bars_appending(file_path_or_df: Union[str, Iterab
                                               verbose: bool = True,
                                               to_csv: bool = False,
                                               output_path: Optional[str] = None,
-                                              data_source: str = "binance"):
+                                              data_source: str = None):
     bars = AppendingConstImbalanceBars(metric='volume_imbalance',
                                        expected_imbalance_window=expected_imbalance_window,
                                        exp_num_ticks_init=exp_num_ticks_init,
@@ -346,7 +346,7 @@ def get_const_tick_imbalance_bars_appending(file_path_or_df: Union[str, Iterable
                                             verbose: bool = True,
                                             to_csv: bool = False,
                                             output_path: Optional[str] = None,
-                                            data_source: str = "binance"): # NEW
+                                            data_source: str = None): # NEW
     bars = AppendingConstImbalanceBars(metric='tick_imbalance',
                                        expected_imbalance_window=expected_imbalance_window,
                                        exp_num_ticks_init=exp_num_ticks_init,
@@ -411,7 +411,7 @@ def get_ema_dollar_run_bars_appending(file_path_or_df: Union[str, Iterable[str],
                                       verbose: bool = True,
                                       to_csv: bool = False,
                                       output_path: Optional[str] = None,
-                                      data_source: str = "binance"):
+                                      data_source: str = None):
     bars = AppendingEMARunBars(metric='dollar_run',
                                num_prev_bars=num_prev_bars,
                                expected_imbalance_window=expected_imbalance_window,
@@ -437,7 +437,7 @@ def get_ema_volume_run_bars_appending(file_path_or_df: Union[str, Iterable[str],
                                       verbose: bool = True,
                                       to_csv: bool = False,
                                       output_path: Optional[str] = None,
-                                      data_source: str = "binance"):
+                                      data_source: str = None):
     bars = AppendingEMARunBars(metric='volume_run',
                                num_prev_bars=num_prev_bars,
                                expected_imbalance_window=expected_imbalance_window,
@@ -463,7 +463,7 @@ def get_ema_tick_run_bars_appending(file_path_or_df: Union[str, Iterable[str], p
                                     verbose: bool = True,
                                     to_csv: bool = False,
                                     output_path: Optional[str] = None,
-                                    data_source: str = "binance"):
+                                    data_source: str = None):
     bars = AppendingEMARunBars(metric='tick_run',
                                num_prev_bars=num_prev_bars,
                                expected_imbalance_window=expected_imbalance_window,
@@ -526,7 +526,7 @@ def get_const_dollar_run_bars_appending(file_path_or_df: Union[str, Iterable[str
                                         verbose: bool = True,
                                         to_csv: bool = False,
                                         output_path: Optional[str] = None,
-                                        data_source: str = "binance"):
+                                        data_source: str = None):
     bars = AppendingConstRunBars(metric='dollar_run',
                                  num_prev_bars=num_prev_bars,
                                  expected_imbalance_window=expected_imbalance_window,
@@ -550,7 +550,7 @@ def get_const_volume_run_bars_appending(file_path_or_df: Union[str, Iterable[str
                                         verbose: bool = True,
                                         to_csv: bool = False,
                                         output_path: Optional[str] = None,
-                                        data_source: str = "binance"):
+                                        data_source: str = None):
     bars = AppendingConstRunBars(metric='volume_run',
                                  num_prev_bars=num_prev_bars,
                                  expected_imbalance_window=expected_imbalance_window,
@@ -574,7 +574,7 @@ def get_const_tick_run_bars_appending(file_path_or_df: Union[str, Iterable[str],
                                       verbose: bool = True,
                                       to_csv: bool = False,
                                       output_path: Optional[str] = None,
-                                      data_source: str = "binance"):
+                                      data_source: str = None):
     bars = AppendingConstRunBars(metric='tick_run',
                                  num_prev_bars=num_prev_bars,
                                  expected_imbalance_window=expected_imbalance_window,
