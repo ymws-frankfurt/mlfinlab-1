@@ -62,14 +62,23 @@ class BasisBarBuild():
 
 
     def readfile_list(self, start_date_str, end_date_str, date_format="%Y-%m-%d"):
-        import glob, os
+        import os
         from datetime import datetime
 
-        try:
-            file_list = glob.glob(os.path.join(self.inputfilepath, '*.csv'))
+        try:            
+            from pathlib import Path                         # add this import once
+            file_list = [str(p) for p in Path(self.inputfilepath).rglob("*.csv*")]
             
             def extract_date(file_path):
+                import re
                 filename = os.path.basename(file_path)
+                # --- GMO Coin special case -----------------------------------------
+                # filenames like  BTCJPY_20250430_ticks.csv.gz   →  YYYYMMDD = 20250430
+                if self.data_source.lower() == "gmocoin":
+                    m = re.search(r'(\d{4})(\d{2})(\d{2})', filename)
+                    if m:
+                        return datetime.strptime(m.group(0), "%Y%m%d")
+                # -------------------------------------------------------------------                
                 name_no_ext = filename.replace('.csv', '')
                 parts = name_no_ext.split('-')
                 # Try to assume the last three parts form the date (e.g. "2024-11-08")
@@ -218,7 +227,6 @@ class BasisBarBuild():
                 output_path=output_path,
                 **kwargs
             )
-
 
 
 def generate_output_filename(inputfilepath, start_period, end_period, data_source, bar_type, **bar_params):

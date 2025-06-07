@@ -1,12 +1,17 @@
 import pandas as pd
 import numpy as np
+import gzip
+import io
+from dateutil.parser import parse as _parse_dt
+
 # ---------------------------------------------------------------------
 #  (A)  *** THE ONLY COPY of column maps / positions lives right here ***
 # ---------------------------------------------------------------------
 COLUMN_MAPPINGS = {
     # Header‑based renaming
     "binance": {
-        "timestamp": "date_time",
+        # "timestamp": "date_time", # For AggTrade https://chatgpt.com/share/681d3aa4-f344-8000-9769-ab5186c89a44
+        "time":      "date_time",   # headered Spot dumps (default)
         "price": "price",
         "qty": "volume",
         "isBuyerMaker": "isBuyerMaker",
@@ -75,30 +80,52 @@ class TickDataFormatter:
 
     def detect_header(self, file_path: str) -> bool:
         """
-        Determines whether the CSV file at file_path contains a header.
-        
-        :param file_path: Path to the CSV file.
-        :return: True if a header is detected, False otherwise.
-        """
-        with open(file_path, 'r') as f:
-            for line in f:
-                if line.strip():
-                    first_line = line.strip()
-                    break
-            else:
-                first_line = ""
-        tokens = [token.strip() for token in first_line.split(',') if token.strip()]
+        Decide whether the first non-blank line in *file_path* is a header.
 
-        def is_data_token(token):
+        Returns
+        -------
+        bool
+            True  -> first non-blank line looks like column names
+            False -> first non-blank line looks like data
+        """
+        # Use gzip.open for *.gz, regular open otherwise
+        opener = gzip.open if file_path.endswith(".gz") else open
+
+        # Helper: does this string look numeric / boolean?
+        def _numeric(token: str) -> bool:
             try:
                 float(token)
                 return True
             except ValueError:
                 return token.lower() in {"true", "false"}
 
-        return not (tokens and all(is_data_token(token) for token in tokens))
+        # Helper: does this string parse as a date/time?
+        def _maybe_datetime(token: str) -> bool:
+            try:
+                _parse_dt(token)
+                return True
+            except Exception:       # broad → any parsing failure means “no”
+                return False
 
+        # Read one non-empty line and classify it
+        with io.TextIOWrapper(opener(file_path, "rb"),
+                            encoding="utf-8",
+                            errors="replace") as f:
+            for raw in f:
+                line = raw.strip()
+                if not line:                 # skip blank lines
+                    continue
+                tokens = [tok.strip() for tok in line.split(",")]
 
+                all_numeric     = all(_numeric(tok) for tok in tokens)
+                first_datetime  = _maybe_datetime(tokens[0])
+
+                # A header is *not* purely numeric and *not* a datetime-first row
+                return not (all_numeric or first_datetime)
+
+        # Empty file → default to “has header” so downstream code won’t crash
+        return True
+        
     def load_and_format_dataframe(self, file_path: str) -> pd.DataFrame:
         """
         Loads a CSV file, extracts the relevant columns, renames them, and reorders them.
@@ -126,8 +153,14 @@ class TickDataFormatter:
         if self.data_source == "binance" and self.preserve_aggressor and "isBuyerMaker" in df.columns:
             df["signed_tick"] = np.where(df["isBuyerMaker"], -1, 1)
         elif self.data_source == "gmocoin":
-            # side == BUY → +1, side == SELL → –1
-            df["signed_tick"] = np.where(df["side"].str.upper().str.startswith("B"), 1, -1)
+            if self.preserve_aggressor and "side" in df.columns:
+                # side == BUY → +1, side == SELL → –1
+                df["signed_tick"] = np.where(df["side"]
+                                            .str.upper().str.startswith("B"), 1, -1)
+            else:
+                # leave it blank → later code will apply the tick-rule
+                df["signed_tick"] = np.nan    
+
             # convert JST to Unix‑ms
             df["date_time"] = (
                 pd.to_datetime(df["date_time"], utc=False)
@@ -196,9 +229,11 @@ class TickDataFormatter:
 
             elif self.data_source == "gmocoin":
                 # GMO Coin side column: "BUY"/"SELL"
-                chunk["signed_tick"] = np.where(
-                    chunk["side"].str.upper().str.startswith("B"), 1, -1
-                )
+                if self.preserve_aggressor and "side" in chunk.columns:
+                    chunk["signed_tick"] = np.where(
+                        chunk["side"].str.upper().str.startswith("B"), 1, -1)
+                else:
+                    chunk["signed_tick"] = np.nan                
                 # JST → UTC epoch‑ms
                 chunk["date_time"] = (
                     pd.to_datetime(chunk["date_time"], utc=False)
