@@ -1,7 +1,7 @@
 # THIS SCRIPT IS NOT BE USED SINCE MFGPB IS ABANDONED!!!
 import sys
 sys.path.append("/app/scripts/jmrichardson_mlfinlab")
-sys.path.append("/app/src/pc3_src")
+sys.path.append("/app/src/Model_Dev")
 
 import pandas as pd
 import numpy as np
